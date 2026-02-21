@@ -1,0 +1,3294 @@
+ <!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Fundraising CRM - Offline Reminders (MVP)</title>
+
+  <style>
+    /* =========================
+       [ANCHOR:COLORS]
+       ========================= */
+    :root{
+      --bg:#0b0f14;
+      --panel:#0f1620;
+      --panel2:#111b28;
+      --text:#e8eef7;
+      --muted:#9fb0c7;
+      --line:#223246;
+      --accent:#4da3ff;
+      --ok:#39d98a;
+      --warn:#ffb020;
+      --bad:#ff5c5c;
+      --chip:#1a2636;
+      --shadow:0 10px 25px rgba(0,0,0,.35);
+      --radius:14px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Liberation Sans", sans-serif;
+    }
+
+    /* =========================
+       [ANCHOR:BASE]
+       ========================= */
+    html,body{height:100%}
+    body{
+      margin:0; background:linear-gradient(180deg, #070a0e 0%, var(--bg) 100%);
+      color:var(--text); font-family:var(--sans);
+    }
+    a{color:var(--accent)}
+    .wrap{max-width:1180px; margin:0 auto; padding:18px 18px 40px;}
+    .topbar{
+      display:flex; gap:12px; align-items:center; justify-content:space-between;
+      padding:14px 16px; border:1px solid var(--line); border-radius:var(--radius);
+      background:rgba(15,22,32,.8); box-shadow:var(--shadow);
+      position:sticky; top:12px; z-index:50;
+      backdrop-filter: blur(8px);
+    }
+    .brand{display:flex; gap:12px; align-items:center;}
+    .logo{
+      width:34px; height:34px; border-radius:10px;
+      background: radial-gradient(circle at 30% 30%, #78c1ff 0%, #2b6bff 40%, #0b1b3a 100%);
+      border:1px solid rgba(255,255,255,.10);
+      box-shadow: 0 8px 18px rgba(77,163,255,.22);
+    }
+    h1{font-size:16px; margin:0;}
+    .sub{font-size:12px; color:var(--muted)}
+    .tabs{display:flex; gap:8px; flex-wrap:wrap;}
+    .tab{
+      padding:8px 10px; border:1px solid var(--line); border-radius:12px;
+      background:rgba(17,27,40,.7); color:var(--text); cursor:pointer;
+      user-select:none; font-size:13px;
+    }
+    .tab.active{border-color:rgba(77,163,255,.55); box-shadow:0 0 0 2px rgba(77,163,255,.15) inset}
+    .actions{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+    .btn{
+      padding:8px 10px; border:1px solid var(--line); border-radius:12px;
+      background:rgba(17,27,40,.9); color:var(--text); cursor:pointer;
+      font-size:13px;
+    }
+    .btn.primary{border-color:rgba(77,163,255,.65); background:rgba(77,163,255,.12)}
+    .btn.danger{border-color:rgba(255,92,92,.6); background:rgba(255,92,92,.10)}
+    .btn:disabled{opacity:.5; cursor:not-allowed}
+    .grid{display:grid; gap:14px; margin-top:14px;}
+    .card{
+      border:1px solid var(--line); border-radius:var(--radius);
+      background:rgba(15,22,32,.75); box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .card .hd{
+      padding:12px 14px; border-bottom:1px solid var(--line);
+      display:flex; justify-content:space-between; align-items:center; gap:10px;
+      background:rgba(17,27,40,.55);
+    }
+    .card .bd{padding:14px;}
+    .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+    .kpi{display:flex; gap:10px; flex-wrap:wrap;}
+    .pill{
+      padding:6px 10px; border:1px solid var(--line); border-radius:999px;
+      background:rgba(26,38,54,.7); font-size:12px; color:var(--muted);
+    }
+    .pill strong{color:var(--text)}
+    .muted{color:var(--muted)}
+    .sep{height:1px; background:var(--line); margin:10px 0}
+    input, select, textarea{
+      background:rgba(9,12,17,.65); border:1px solid var(--line);
+      color:var(--text); border-radius:12px; padding:9px 10px;
+      outline:none; font-size:13px; width:100%;
+    }
+    textarea{min-height:90px; resize:vertical}
+    .field{display:flex; flex-direction:column; gap:6px; min-width:220px; flex:1}
+    .field label{font-size:12px; color:var(--muted)}
+    .table{
+      width:100%; border-collapse:collapse; font-size:13px;
+    }
+    .table th, .table td{
+      text-align:left; padding:10px 10px; border-bottom:1px solid rgba(34,50,70,.7);
+      vertical-align:top;
+    }
+    .table th{color:var(--muted); font-weight:600; font-size:12px}
+    .chip{
+      display:inline-flex; align-items:center; gap:6px;
+      padding:4px 8px; border:1px solid var(--line); border-radius:999px;
+      background:rgba(26,38,54,.7); color:var(--text); font-size:12px;
+      white-space:nowrap;
+    }
+    .dot{width:8px; height:8px; border-radius:50%;}
+    .dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.bad{background:var(--bad)}
+    .right{margin-left:auto}
+    .two{display:grid; gap:12px; grid-template-columns: 1.4fr .9fr;}
+    @media (max-width: 980px){.two{grid-template-columns:1fr}}
+    .hidden{display:none !important}
+
+    /* =========================
+       [ANCHOR:MODAL]
+       ========================= */
+    .modalBackdrop{
+      position:fixed; inset:0; background:rgba(0,0,0,.55);
+      display:flex; align-items:center; justify-content:center; padding:18px;
+      z-index:80;
+    }
+    .modal{
+      width:min(1100px, 100%); max-height:92vh; overflow:auto;
+      border:1px solid var(--line); border-radius:18px;
+      background:rgba(15,22,32,.96); box-shadow:var(--shadow);
+    }
+    .modal .mh{
+      padding:12px 14px; border-bottom:1px solid var(--line);
+      display:flex; justify-content:space-between; align-items:center; gap:10px;
+      position:sticky; top:0; background:rgba(15,22,32,.96);
+      backdrop-filter: blur(8px);
+      z-index:10;
+    }
+    .modal .mb{padding:14px;}
+    .miniBtn{
+      padding:6px 9px; border:1px solid var(--line); border-radius:10px;
+      background:rgba(17,27,40,.9); color:var(--text); cursor:pointer; font-size:12px;
+    }
+    .miniBtn.primary{border-color:rgba(77,163,255,.65); background:rgba(77,163,255,.12)}
+    .miniBtn.danger{border-color:rgba(255,92,92,.6); background:rgba(255,92,92,.10)}
+    .badge{
+      padding:4px 8px; border-radius:999px; border:1px solid var(--line);
+      background:rgba(26,38,54,.7); color:var(--muted); font-size:12px;
+    }
+    .toast{
+      position:fixed; right:18px; bottom:18px; z-index:120;
+      border:1px solid var(--line); background:rgba(15,22,32,.96);
+      border-radius:14px; padding:10px 12px; box-shadow:var(--shadow);
+      max-width: 420px;
+    }
+
+/* Contacts - card layout */
+.contactCards{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.contactCard{
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(255,255,255,0.02);
+}
+
+.contactCardHd{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.contactCardBd{
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.contactCard .field label{
+  font-size: 12px;
+  opacity: 0.8;
+  margin-bottom: 4px;
+  display: block;
+}
+
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <h1>Fundraising CRM - Offline Reminders (MVP)</h1>
+          <div class="sub">IndexedDB + Dashboard Today + export .ics (Outlook)</div>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <div class="tab active" data-tab="today">Today</div>
+        <div class="tab" data-tab="companies">Companies</div>
+        <div class="tab" data-tab="events">Events</div>
+        <div class="tab" data-tab="reports">Reports</div>
+        <div class="tab" data-tab="importexport">Import/Export</div>
+        <div class="tab" data-tab="settings">Settings</div>
+      </div>
+
+<div class="actions">
+  <button class="btn" id="btnQuickAddCompany">+ Company</button>
+  <button class="btn primary" id="btnBackupJson">Backup JSON</button>
+  <button class="btn" id="btnExportIcsFiltered">Export .ics (filtered)</button>
+</div>
+
+    </div>
+
+    <!-- =========================
+         [ANCHOR:VIEW_TODAY]
+         ========================= -->
+    <section id="view-today" class="grid">
+      <div class="card">
+        <div class="hd">
+          <div class="row">
+            <strong>Dashboard Today</strong>
+            <span class="badge" id="todayDateBadge"></span>
+          </div>
+          <div class="row">
+            <span class="pill"><strong id="kpiOpen">0</strong>&nbsp;open tasks</span>
+            <span class="pill"><strong id="kpiOverdue">0</strong>&nbsp;overdue</span>
+            <span class="pill"><strong id="kpiDueToday">0</strong>&nbsp;due today</span>
+          </div>
+        </div>
+        <div class="bd">
+          <div class="row" style="gap:12px;">
+            <div class="field" style="min-width:280px;">
+              <label>Search tasks (company / note)</label>
+              <input id="taskSearch" placeholder="ex: Coca-Cola / follow-up / contract" />
+            </div>
+            <div class="field" style="min-width:220px; max-width:240px;">
+              <label>Filter</label>
+              <select id="taskFilter">
+                <option value="all">All open</option>
+                <option value="today">Due today</option>
+                <option value="overdue">Overdue</option>
+                <option value="week">Next 7 days</option>
+              </select>
+            </div>
+            <div class="field" style="min-width:220px; max-width:260px;">
+              <label>Quick</label>
+              <div class="row">
+                <button class="miniBtn" id="btnMarkAllDueTodayDone">Mark all due today done</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+          <div id="tasksTableWrap"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="hd">
+          <strong>Weekly target</strong>
+          <span class="muted">Prim Contact / week</span>
+        </div>
+        <div class="bd">
+          <div class="kpi">
+            <span class="pill">Target: <strong id="weeklyTarget">10</strong></span>
+            <span class="pill">This week: <strong id="weeklyDone">0</strong></span>
+          </div>
+          <div class="sep"></div>
+          <div class="muted">This counts activities of type "Prim Contact" logged in the current week.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================
+         [ANCHOR:VIEW_COMPANIES]
+         ========================= -->
+    <section id="view-companies" class="grid hidden">
+      <div class="card">
+        <div class="hd">
+          <strong>Companies</strong>
+          <div class="row">
+            <span class="pill">Total: <strong id="companiesCount">0</strong></span>
+            <span class="pill">Need follow-up: <strong id="companiesNeedFollowup">0</strong></span>
+          </div>
+        </div>
+        <div class="bd">
+          <div class="row" style="gap:12px;">
+            <div class="field" style="min-width:280px;">
+              <label>Search company / contact / introduced by</label>
+              <input id="companySearch" placeholder="ex: Auchan / CSR / Lili" />
+            </div>
+            <div class="field" style="min-width:240px; max-width:260px;">
+              <label>Status</label>
+              <select id="companyStatusFilter">
+                <option value="all">All</option>
+                <option value="Prospect">Prospect</option>
+                <option value="Contactat">Contactat</option>
+                <option value="In discutii">In discutii</option>
+                <option value="Propunere trimisa">Propunere trimisa</option>
+                <option value="Negociere">Negociere</option>
+                <option value="Castigat">Castigat</option>
+                <option value="Pierdut">Pierdut</option>
+                <option value="Nurture">Nurture</option>
+              </select>
+            </div>
+            <div class="field" style="min-width:180px; max-width:220px;">
+              <label>Priority</label>
+              <select id="companyPriorityFilter">
+                <option value="all">All</option>
+                <option value="A">A</option>
+                <option value="B">B</option>
+                <option value="C">C</option>
+                <option value="(blank)">(blank)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+          <div id="companiesTableWrap"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================
+         [ANCHOR:VIEW_EVENTS]
+         ========================= -->
+    <section id="view-events" class="grid hidden">
+      <div class="card">
+        <div class="hd">
+          <strong>Events (CRM)</strong>
+          <div class="row">
+            <button class="miniBtn primary" id="btnAddEvent">+ Event</button>
+          </div>
+        </div>
+        <div class="bd">
+          <div class="muted">MVP: you can add events, then link companies to events later in Company view.</div>
+          <div class="sep"></div>
+          <div id="eventsTableWrap"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================
+         [ANCHOR:VIEW_REPORTS]
+         ========================= -->
+    <section id="view-reports" class="grid hidden">
+      <div class="card">
+        <div class="hd">
+          <strong>Reports (MVP)</strong>
+          <span class="muted">built from Activities + Pipeline</span>
+        </div>
+        <div class="bd">
+          <div class="two">
+            <div class="card" style="box-shadow:none;">
+              <div class="hd">
+                <strong>Who replied / who did not</strong>
+                <span class="muted">based on last activity</span>
+              </div>
+              <div class="bd">
+                <div class="row">
+                  <div class="field" style="max-width:240px;">
+                    <label>No-reply threshold (days)</label>
+                    <input id="noReplyDays" type="number" value="7" min="1" />
+                  </div>
+                  <button class="miniBtn" id="btnRunNoReply">Run</button>
+                </div>
+                <div class="sep"></div>
+                <div id="reportNoReply"></div>
+              </div>
+            </div>
+
+            <div class="card" style="box-shadow:none;">
+              <div class="hd">
+                <strong>Contracts: sponsorship vs services</strong>
+                <span class="muted">counts + sums</span>
+              </div>
+              <div class="bd">
+                <div class="muted">Log an activity of type "Contract signed" with Contract type + optional Amount EUR to populate this report.</div>
+                <div class="sep"></div>
+                <div id="reportContracts"></div>
+              </div>
+            </div>
+          </div>
+
+<div class="sep"></div>
+
+<div class="card" style="box-shadow:none;">
+  <div class="hd">
+    <strong>Conversion + sums per event</strong>
+    <span class="muted">linked companies → contracts signed</span>
+  </div>
+  <div class="bd">
+    <div class="row">
+      <button class="miniBtn" id="btnExportEventReportCsv">Export CSV</button>
+    </div>
+    <div class="sep"></div>
+    <div id="reportEvents"></div>
+  </div>
+</div>
+
+<div class="sep"></div>
+
+<div class="card" style="box-shadow:none;">
+  <div class="hd">
+    <strong>Pipeline funnel per event</strong>
+    <span class="muted">counts by stage</span>
+  </div>
+  <div class="bd">
+    <div class="row">
+      <button class="miniBtn" id="btnExportEventPipelineCsv">Export CSV</button>
+    </div>
+    <div class="sep"></div>
+    <div id="reportEventPipeline"></div>
+  </div>
+</div>
+
+          <div class="sep"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================
+         [ANCHOR:VIEW_IMPORTEXPORT]
+         ========================= -->
+    <section id="view-importexport" class="grid hidden">
+      <div class="card">
+        <div class="hd">
+          <strong>Import / Export</strong>
+          <span class="muted">offline, one-time Excel import via CSV (recommended)</span>
+        </div>
+        <div class="bd">
+          <div class="card" style="box-shadow:none;">
+            <div class="hd">
+              <strong>One-time import (CSV)</strong>
+              <span class="muted">export your Excel as CSV, then import here</span>
+            </div>
+            <div class="bd">
+              <div class="row">
+                <input type="file" id="importFile" accept=".csv,text/csv" />
+                <select id="importMode" style="max-width:220px;">
+                  <option value="replace">REPLACE all data</option>
+                  <option value="merge">MERGE by company name</option>
+                </select>
+                <button class="btn primary" id="btnImport">Import CSV</button>
+              </div>
+              <div class="sep"></div>
+              <div class="muted" id="importHint">
+                Required headers (same as your Excel export): Nume companie, Account RM, Nume persoana contact, E-mail persoana de contact 1/2/3, Phone, Status, Proiect trimis, Follow up, Detalii
+              </div>
+              <div class="sep"></div>
+              <div id="importResult" class="muted"></div>
+
+<div class="sep"></div>
+
+<div class="row" style="gap:10px; align-items:center;">
+  <button class="btn" id="btnCreateLegacyTasks">Create initial follow-up tasks (one-time)</button>
+  <span class="muted">
+    Creates tasks based on imported flags: Follow up = +3 days, Proiect trimis = +7 days. No duplicates.
+  </span>
+</div>
+<div class="muted" id="legacyTasksResult" style="margin-top:8px;"></div>
+
+            </div>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="card" style="box-shadow:none;">
+            <div class="hd">
+              <strong>Export backup</strong>
+              <span class="muted">Excel-compatible (.xls) + CSV + JSON</span>
+            </div>
+            <div class="bd">
+              <div class="row" style="gap:10px;">
+                <button class="btn" id="btnExportCompaniesCsv">Export Companies CSV</button>
+                <button class="btn" id="btnExportContactsCsv">Export Contacts CSV</button>
+                <button class="btn" id="btnExportActivitiesCsv">Export Activities CSV</button>
+                <button class="btn" id="btnExportTasksCsv">Export Tasks CSV</button>
+              </div>
+              <div class="row" style="margin-top:10px; gap:10px;">
+                <button class="btn" id="btnExportCompaniesXls">Export Companies .xls</button>
+                <button class="btn" id="btnExportContactsXls">Export Contacts .xls</button>
+                <button class="btn primary" id="btnBackupJson2">Backup JSON</button>
+              </div>
+              <div class="sep"></div>
+              <div class="muted">Note: Excel opens CSV and HTML-based .xls files without extra libraries.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================
+         [ANCHOR:VIEW_SETTINGS]
+         ========================= -->
+    <section id="view-settings" class="grid hidden">
+      <div class="card">
+        <div class="hd">
+          <strong>Settings</strong>
+          <span class="muted">cadence + weekly target</span>
+        </div>
+        <div class="bd">
+          <div class="row">
+            <div class="field" style="max-width:220px;">
+              <label>Prim Contact cadence (days)</label>
+              <input id="setPrimCadence" value="5,10" />
+            </div>
+            <div class="field" style="max-width:220px;">
+              <label>Follow-up default (days)</label>
+              <input id="setFollowUpDefault" type="number" value="7" min="1" />
+            </div>
+            <div class="field" style="max-width:220px;">
+              <label>No reply follow-up (days)</label>
+              <input id="setNoReply" type="number" value="3" min="1" />
+            </div>
+            <div class="field" style="max-width:220px;">
+              <label>Lost re-entry (days)</label>
+              <input id="setLostReentry" type="number" value="90" min="1" />
+            </div>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="row">
+            <div class="field" style="max-width:220px;">
+              <label>Weekly target (Prim Contact)</label>
+              <input id="setWeeklyTarget" type="number" value="10" min="0" />
+            </div>
+            <div class="field" style="max-width:220px;">
+              <label>ICS reminder hour (0-23)</label>
+              <input id="setIcsHour" type="number" value="10" min="0" max="23" />
+            </div>
+            <div class="field" style="max-width:220px;">
+              <label>ICS reminder minute (0-59)</label>
+              <input id="setIcsMinute" type="number" value="0" min="0" max="59" />
+            </div>
+          </div>
+
+          <div class="sep"></div>
+          <div class="row">
+            <button class="btn primary" id="btnSaveSettings">Save settings</button>
+            <button class="btn danger" id="btnNukeDb">Delete ALL data (danger)</button>
+          </div>
+          <div class="sep"></div>
+          <div class="muted" id="settingsSavedMsg"></div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- =========================
+       [ANCHOR:MODAL_ROOT]
+       ========================= -->
+  <div id="modalRoot" class="hidden"></div>
+  <div id="toastRoot" class="hidden"></div>
+
+<script>
+/* ==========================================================
+   [ANCHOR:UTILS]
+   ========================================================== */
+const $$ = (sel, root=document) => root.querySelector(sel);
+const $$$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+
+function uid(){
+  if (crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'id_' + Math.random().toString(16).slice(2) + '_' + Date.now();
+}
+function nowIso(){ return new Date().toISOString(); }
+function toDateOnlyISO(d){
+  const x = new Date(d);
+  x.setHours(0,0,0,0);
+  return x.toISOString().slice(0,10);
+}
+function parseBoolX(v){
+  if (v === null || v === undefined) return false;
+  const s = String(v).trim().toLowerCase();
+  return s === 'x' || s === 'da' || s === 'yes' || s === 'true' || s === '1';
+}
+function safeStr(v){ return (v===null || v===undefined) ? '' : String(v).trim(); }
+
+function toast(msg, actionLabel=null, actionFn=null, ms=null){
+  const root = $$('#toastRoot');
+  root.classList.remove('hidden');
+  root.innerHTML = '';
+
+  const el = document.createElement('div');
+  el.className = 'toast';
+
+  const text = document.createElement('span');
+  text.textContent = msg;
+  el.appendChild(text);
+
+  if (actionLabel && typeof actionFn === 'function'){
+    const btn = document.createElement('button');
+    btn.className = 'miniBtn';
+    btn.textContent = actionLabel;
+    btn.style.marginLeft = '10px';
+    btn.onclick = ()=>{
+      try{ actionFn(); } catch(e){ console.error(e); }
+      root.classList.add('hidden'); root.innerHTML='';
+    };
+    el.appendChild(btn);
+  }
+
+  root.appendChild(el);
+
+  const timeout = (ms != null) ? ms : (actionLabel ? 6500 : 2600);
+  setTimeout(()=>{ root.classList.add('hidden'); root.innerHTML=''; }, timeout);
+}
+
+function downloadText(filename, text, mime='text/plain;charset=utf-8'){
+  const blob = new Blob([text], {type:mime});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1500);
+}
+
+function splitEmails(cell){
+  const s = safeStr(cell);
+  if (!s) return [];
+  const parts = s.split(/[,;/]+/).map(x=>x.trim()).filter(Boolean);
+  const out = [];
+  for (const p of parts){
+    // also handle "a@b.com office@c.com" without separators
+    const more = p.split(/\s+/).map(x=>x.trim()).filter(Boolean);
+    if (more.length > 1 && more.some(x=>x.includes('@'))){
+      for (const m of more) if (m.includes('@')) out.push(m);
+    } else {
+      out.push(p);
+    }
+  }
+  const seen = new Set();
+  const res = [];
+  for (const e of out){
+    const key = e.toLowerCase();
+    if (!key.includes('@')) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    res.push(e);
+  }
+  return res;
+}
+
+/* ==========================================================
+   [ANCHOR:CSV_PARSER]
+   Robust enough for Excel CSV export (quotes, commas)
+   ========================================================== */
+function parseCsv(text){
+  const rows = [];
+  let i=0, field='', row=[], inQuotes=false;
+  while (i < text.length){
+    const c = text[i];
+    if (inQuotes){
+      if (c === '"'){
+        if (text[i+1] === '"'){ field += '"'; i+=2; continue; }
+        inQuotes = false; i++; continue;
+      }
+      field += c; i++; continue;
+    } else {
+      if (c === '"'){ inQuotes = true; i++; continue; }
+      if (c === ','){
+        row.push(field); field=''; i++; continue;
+      }
+      if (c === '\r'){
+        i++; continue;
+      }
+      if (c === '\n'){
+        row.push(field); field='';
+        // skip completely empty trailing rows
+        if (row.some(x => String(x).trim() !== '')) rows.push(row);
+        row = []; i++; continue;
+      }
+      field += c; i++; continue;
+    }
+  }
+  // last field
+  row.push(field);
+  if (row.some(x => String(x).trim() !== '')) rows.push(row);
+
+  if (!rows.length) return {headers:[], data:[]};
+  const headers = rows[0].map(h=>String(h||'').trim());
+  const data = rows.slice(1).map(r=>{
+    const obj = {};
+    headers.forEach((h, idx)=> obj[h] = (idx < r.length ? r[idx] : ''));
+    return obj;
+  });
+  return {headers, data};
+}
+
+/* ==========================================================
+   [ANCHOR:DB]
+   IndexedDB wrapper
+   ========================================================== */
+const DB_NAME = 'fundraising_crm_mvp';
+const DB_VER = 1;
+
+const STORES = {
+  companies: 'companies',
+  contacts: 'contacts',
+  activities: 'activities',
+  tasks: 'tasks',
+  events: 'events',
+  settings: 'settings',
+  attachments: 'attachments'
+};
+
+let db = null;
+
+function openDb(){
+  return new Promise((resolve, reject)=>{
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = (e)=>{
+      const d = req.result;
+
+      if (!d.objectStoreNames.contains(STORES.companies)){
+        const s = d.createObjectStore(STORES.companies, {keyPath:'id'});
+        s.createIndex('byName', 'name', {unique:false});
+        s.createIndex('byStatus', 'pipelineStatus', {unique:false});
+        s.createIndex('byUpdatedAt', 'updatedAt', {unique:false});
+      }
+      if (!d.objectStoreNames.contains(STORES.contacts)){
+        const s = d.createObjectStore(STORES.contacts, {keyPath:'id'});
+        s.createIndex('byCompanyId', 'companyId', {unique:false});
+        s.createIndex('byEmail', 'email', {unique:false});
+      }
+      if (!d.objectStoreNames.contains(STORES.activities)){
+        const s = d.createObjectStore(STORES.activities, {keyPath:'id'});
+        s.createIndex('byCompanyId', 'companyId', {unique:false});
+        s.createIndex('byDateTime', 'dateTime', {unique:false});
+        s.createIndex('byType', 'type', {unique:false});
+      }
+      if (!d.objectStoreNames.contains(STORES.tasks)){
+        const s = d.createObjectStore(STORES.tasks, {keyPath:'id'});
+        s.createIndex('byCompanyId', 'companyId', {unique:false});
+        s.createIndex('byDueDate', 'dueDate', {unique:false});
+        s.createIndex('byStatus', 'status', {unique:false});
+      }
+      if (!d.objectStoreNames.contains(STORES.events)){
+        const s = d.createObjectStore(STORES.events, {keyPath:'id'});
+        s.createIndex('byStartDate', 'startDate', {unique:false});
+      }
+      if (!d.objectStoreNames.contains(STORES.settings)){
+        d.createObjectStore(STORES.settings, {keyPath:'key'});
+      }
+      if (!d.objectStoreNames.contains(STORES.attachments)){
+        const s = d.createObjectStore(STORES.attachments, {keyPath:'id'});
+        s.createIndex('byCompanyId', 'companyId', {unique:false});
+        s.createIndex('byActivityId', 'activityId', {unique:false});
+      }
+    };
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+
+function tx(storeName, mode='readonly'){
+  const t = db.transaction(storeName, mode);
+  return t.objectStore(storeName);
+}
+function idbPut(storeName, value){
+  return new Promise((resolve, reject)=>{
+    const s = tx(storeName, 'readwrite');
+    const req = s.put(value);
+    req.onsuccess = ()=> resolve(true);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+function idbAdd(storeName, value){
+  return new Promise((resolve, reject)=>{
+    const s = tx(storeName, 'readwrite');
+    const req = s.add(value);
+    req.onsuccess = ()=> resolve(true);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+function idbGet(storeName, key){
+  return new Promise((resolve, reject)=>{
+    const s = tx(storeName, 'readonly');
+    const req = s.get(key);
+    req.onsuccess = ()=> resolve(req.result || null);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+function idbGetAll(storeName){
+  return new Promise((resolve, reject)=>{
+    const s = tx(storeName, 'readonly');
+    const req = s.getAll();
+    req.onsuccess = ()=> resolve(req.result || []);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+function idbDelete(storeName, key){
+  return new Promise((resolve, reject)=>{
+    const s = tx(storeName, 'readwrite');
+    const req = s.delete(key);
+    req.onsuccess = ()=> resolve(true);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+function idbClear(storeName){
+  return new Promise((resolve, reject)=>{
+    const s = tx(storeName, 'readwrite');
+    const req = s.clear();
+    req.onsuccess = ()=> resolve(true);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+
+async function getSetting(key, fallback=null){
+  const rec = await idbGet(STORES.settings, key);
+  return rec ? rec.value : fallback;
+}
+async function setSetting(key, value){
+  await idbPut(STORES.settings, {key, value});
+}
+
+/* ==========================================================
+   [ANCHOR:SETTINGS_DEFAULTS]
+   ========================================================== */
+async function ensureDefaults(){
+  const prim = await getSetting('primCadence', null);
+  if (prim === null) await setSetting('primCadence', [5,10]);
+
+  const fu = await getSetting('followUpDefaultDays', null);
+  if (fu === null) await setSetting('followUpDefaultDays', 7);
+
+  const nr = await getSetting('noReplyDays', null);
+  if (nr === null) await setSetting('noReplyDays', 3);
+
+  const lr = await getSetting('lostReentryDays', null);
+  if (lr === null) await setSetting('lostReentryDays', 90);
+
+  const wt = await getSetting('weeklyTarget', null);
+  if (wt === null) await setSetting('weeklyTarget', 10);
+
+  const icsH = await getSetting('icsHour', null);
+  if (icsH === null) await setSetting('icsHour', 10);
+
+  const icsM = await getSetting('icsMinute', null);
+  if (icsM === null) await setSetting('icsMinute', 0);
+}
+
+/* ==========================================================
+   [ANCHOR:IMPORT_LOGIC]
+   ========================================================== */
+function mapPipelineStatus(row){
+  const statusRaw = safeStr(row['Status']);
+  if (statusRaw && statusRaw.toLowerCase().includes('lost')) return 'Pierdut';
+  const proiect = parseBoolX(row['Proiect trimis']);
+  const fu = parseBoolX(row['Follow up']);
+  if (proiect) return 'Propunere trimisa';
+  if (fu) return 'In discutii';
+  // if statusRaw exists but not recognized, keep Prospect and store raw
+  return 'Prospect';
+}
+
+function normPhone(v){
+  const s = safeStr(v);
+  if (!s) return '';
+  return s.replace(/\s+/g,' ').trim();
+}
+
+async function replaceAllData(){
+  await idbClear(STORES.attachments);
+  await idbClear(STORES.tasks);
+  await idbClear(STORES.activities);
+  await idbClear(STORES.contacts);
+  await idbClear(STORES.events);
+  await idbClear(STORES.companies);
+}
+
+async function findCompanyByName(name){
+  const all = await idbGetAll(STORES.companies);
+  const key = safeStr(name).toLowerCase();
+  return all.find(c => safeStr(c.name).toLowerCase() === key) || null;
+}
+
+async function importCsvRows(rows, mode='replace'){
+  const required = [
+    'Nume companie','Account RM','Nume persoana contact',
+    'E-mail persoana de contact 1','E-mail persoana de contact 2','E-mail persoana de contact 3',
+    'Phone','Status','Proiect trimis','Follow up','Detalii'
+  ];
+  const missing = required.filter(h => !(h in rows[0]));
+  if (missing.length){
+    throw new Error('Missing headers: ' + missing.join(', '));
+  }
+
+  if (mode === 'replace'){
+    await replaceAllData();
+  }
+
+  let companiesAdded=0, companiesUpdated=0, contactsAdded=0;
+
+  for (const r of rows){
+    const companyName = safeStr(r['Nume companie']);
+    if (!companyName) continue;
+
+    let company = null;
+    if (mode === 'merge'){
+      company = await findCompanyByName(companyName);
+    }
+
+    const pipelineStatus = mapPipelineStatus(r);
+    const introducedBy = safeStr(r['Account RM']);
+    const rawStatusText = safeStr(r['Status']);
+    const notes = safeStr(r['Detalii']);
+
+    if (!company){
+      company = {
+        id: uid(),
+        name: companyName,
+        introducedBy,
+        pipelineStatus,
+        priority: '', // per user: keep blank
+        contributionType: '',
+        estimatedValueEUR: '',
+        eventId: '',
+        nextStepText: '',
+        notes,
+        rawStatusText,
+        legacyFlags: {
+          proiectTrimis: parseBoolX(r['Proiect trimis']),
+          followUpFlag: parseBoolX(r['Follow up'])
+        },
+        createdAt: nowIso(),
+        updatedAt: nowIso()
+      };
+      await idbAdd(STORES.companies, company);
+      companiesAdded++;
+    } else {
+      // merge update minimal fields if empty in existing
+      const patch = {...company};
+      if (!safeStr(patch.introducedBy) && introducedBy) patch.introducedBy = introducedBy;
+      if (!safeStr(patch.notes) && notes) patch.notes = notes;
+      if (!safeStr(patch.rawStatusText) && rawStatusText) patch.rawStatusText = rawStatusText;
+      // do not override pipeline if user already set; but if it's default Prospect and file implies more advanced, upgrade
+      const order = ['Prospect','Contactat','In discutii','Propunere trimisa','Negociere','Castigat','Pierdut','Nurture'];
+      if (order.indexOf(patch.pipelineStatus) < order.indexOf(pipelineStatus)){
+        patch.pipelineStatus = pipelineStatus;
+      }
+      patch.updatedAt = nowIso();
+      await idbPut(STORES.companies, patch);
+      company = patch;
+      companiesUpdated++;
+    }
+
+    // Contacts
+    const name1 = safeStr(r['Nume persoana contact']);
+    const phone1 = normPhone(r['Phone']);
+
+    const emails1 = splitEmails(r['E-mail persoana de contact 1']);
+    const emails2 = splitEmails(r['E-mail persoana de contact 2']);
+    const emails3 = splitEmails(r['E-mail persoana de contact 3']);
+
+    // helper
+    async function addContact(email, fullName='', phone=''){
+      const c = {
+        id: uid(),
+        companyId: company.id,
+        fullName: fullName,
+        roleText: '',
+        phone: phone,
+        email: email,
+        notes: '',
+        createdAt: nowIso(),
+        updatedAt: nowIso()
+      };
+      await idbAdd(STORES.contacts, c);
+      contactsAdded++;
+    }
+
+    // email1 may include multiple -> first gets name+phone, rest blank
+    if (emails1.length){
+      await addContact(emails1[0], name1, phone1);
+      for (let i=1;i<emails1.length;i++) await addContact(emails1[i], '', '');
+    } else if (name1 || phone1){
+      // contact without email
+      const c = {
+        id: uid(),
+        companyId: company.id,
+        fullName: name1,
+        roleText: '',
+        phone: phone1,
+        email: '',
+        notes: '',
+        createdAt: nowIso(),
+        updatedAt: nowIso()
+      };
+      await idbAdd(STORES.contacts, c);
+      contactsAdded++;
+    }
+
+    for (const e of emails2) await addContact(e, '', '');
+    for (const e of emails3) await addContact(e, '', '');
+  }
+
+  return {companiesAdded, companiesUpdated, contactsAdded};
+}
+
+/* ==========================================================
+   [ANCHOR:TASK_ENGINE]
+   ========================================================== */
+const TASK_STATUS = { OPEN:'Open', DONE:'Done', SNOOZED:'Snoozed' };
+let __undoTaskSnapshot = null;     // full task object before delete
+let __undoTaskTimer = null;        // timer id
+
+
+function taskDot(task, todayISO){
+  if (task.status !== TASK_STATUS.OPEN) return 'ok';
+  if (task.dueDate < todayISO) return 'bad';
+  if (task.dueDate === todayISO) return 'warn';
+  return 'ok';
+}
+
+async function createTask({companyId, contactId='', taskType='Follow-up', dueDateISO, notes='', ruleSource='manual', meta=null}){
+  const t = {
+    id: uid(),
+    companyId,
+    contactId,
+    taskType,
+    dueDate: dueDateISO,
+    status: TASK_STATUS.OPEN,
+    snoozeUntil: '',
+    ruleSource,
+    notes,
+    meta: meta || null,
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  };
+  await idbAdd(STORES.tasks, t);
+  return t;
+}
+
+async function bulkCreateInitialTasksFromLegacyFlags(){
+  const companies = await idbGetAll(STORES.companies);
+  const tasks = await idbGetAll(STORES.tasks);
+
+  const today = new Date();
+  const todayISO = toDateOnlyISO(today);
+
+  // helper: check if company already has any open follow-up-ish task
+  const hasOpenTask = (companyId) => tasks.some(t =>
+    t.companyId === companyId &&
+    t.status === TASK_STATUS.OPEN && !t.isDeleted &&
+    ['Follow-up','Prim Contact follow-up','Lost re-entry'].includes(t.taskType)
+  );
+
+  let created = 0, skippedExisting = 0, skippedNoFlags = 0;
+
+  for (const c of companies){
+    const flags = c.legacyFlags || {};
+    const hasFU = !!flags.followUpFlag;
+    const hasProj = !!flags.proiectTrimis;
+
+    if (!hasFU && !hasProj){
+      skippedNoFlags++;
+      continue;
+    }
+
+    if (hasOpenTask(c.id)){
+      skippedExisting++;
+      continue;
+    }
+
+    // rule:
+    // - Follow up flag -> +3 days (more urgent)
+    // - Proiect trimis -> +7 days
+    // - if both -> use +3 days and mention both
+    const due = new Date(today);
+    let days = hasFU ? 3 : 7;
+    due.setDate(due.getDate() + days);
+
+    const noteParts = [];
+    if (hasFU) noteParts.push('Follow up flag');
+    if (hasProj) noteParts.push('Proiect trimis flag');
+
+    await createTask({
+      companyId: c.id,
+      contactId: '',
+      taskType: 'Follow-up',
+      dueDateISO: toDateOnlyISO(due),
+      notes: `Legacy import: ${noteParts.join(' + ')} → +${days}d`,
+      ruleSource: 'legacy-import'
+    });
+
+    created++;
+  }
+
+  return {created, skippedExisting, skippedNoFlags, totalCompanies: companies.length, todayISO};
+}
+
+async function markTaskDone(taskId){
+  const t = await idbGet(STORES.tasks, taskId);
+  if (!t) return;
+  t.status = TASK_STATUS.DONE;
+  t.updatedAt = nowIso();
+  await idbPut(STORES.tasks, t);
+}
+
+async function snoozeTask(taskId, newDueISO){
+  const t = await idbGet(STORES.tasks, taskId);
+  if (!t) return;
+  t.status = TASK_STATUS.OPEN;
+  t.dueDate = newDueISO;
+  t.snoozeUntil = newDueISO;
+  t.updatedAt = nowIso();
+  await idbPut(STORES.tasks, t);
+}
+
+async function createSecondPrimContactTaskFromFirstTask(firstTaskId){
+  const first = await idbGet(STORES.tasks, firstTaskId);
+  if (!first || first.status !== TASK_STATUS.OPEN) return {ok:false, reason:'missing_or_not_open'};
+
+  const m = first.meta || null;
+  if (!m || m.kind !== 'prim-contact' || m.sequence !== 1 || !m.baseDateISO || !m.baseActivityId){
+    return {ok:false, reason:'not_eligible'};
+  }
+
+  const primCadence = await getSetting('primCadence', [5,10]);
+  const secondDays = Number(primCadence[1] || 10);
+
+  // Avoid duplicates: if a seq=2 exists for same baseActivityId, do nothing
+  const allTasks = await idbGetAll(STORES.tasks);
+  const already = allTasks.some(t =>
+    t.status === TASK_STATUS.OPEN && !t.isDeleted &&
+    t.meta && t.meta.kind === 'prim-contact' &&
+    t.meta.baseActivityId === m.baseActivityId &&
+    t.meta.sequence === 2
+  );
+  if (already) return {ok:false, reason:'duplicate'};
+
+  // due = baseDate + 10 days (but not in the past)
+  const base = new Date(m.baseDateISO + 'T00:00:00');
+  const due = new Date(base.getTime());
+  due.setDate(due.getDate() + secondDays);
+
+  const todayISO = toDateOnlyISO(new Date());
+  let dueISO = toDateOnlyISO(due);
+  if (dueISO < todayISO) dueISO = todayISO;
+
+  await createTask({
+    companyId: first.companyId,
+    contactId: first.contactId || '',
+    taskType: 'Prim Contact follow-up #2',
+    dueDateISO: dueISO,
+    notes: `Auto: Prim Contact second reminder (+${secondDays}d from base date)`,
+    ruleSource: 'auto',
+    meta: {
+      kind: 'prim-contact',
+      sequence: 2,
+      baseDateISO: m.baseDateISO,
+      baseActivityId: m.baseActivityId
+    }
+  });
+
+  // Optional cleanup: mark first task done to keep Today clean
+  await markTaskDone(firstTaskId);
+
+  return {ok:true, dueISO};
+}
+
+/* ==========================================================
+   [ANCHOR:ACTIVITIES]
+   ========================================================== */
+const ACT_TYPES = [
+  'Prim Contact (email/call/other)',
+  'Email sent',
+  'Email received',
+  'Call',
+  'Meeting',
+  'Contract sent',
+  'Contract signed',
+  'Invoice',
+  'Payment received',
+  'Impact report',
+  'Event invite',
+  'Event attendance confirmed'
+];
+
+async function addActivity({companyId, contactId='', type, dateTimeISO, outcome='', notes='', createFollowUp=false, followUpDueDateISO='', contractType='', amountEUR='', attachmentIds=[], idOverride='' }){
+
+const a = {
+  id: (idOverride || uid()),
+  companyId,
+  contactId,
+  type,
+  dateTime: dateTimeISO,
+  outcome,
+  notes,
+  contractType: contractType || '',
+  amountEUR: amountEUR || '',
+  createFollowUp: !!createFollowUp,
+  followUpDueDate: followUpDueDateISO || '',
+  attachmentIds: Array.isArray(attachmentIds) ? attachmentIds : [],
+  createdAt: nowIso(),
+  updatedAt: nowIso()
+};
+
+  await idbAdd(STORES.activities, a);
+
+  // Auto create tasks rules
+  const primCadence = await getSetting('primCadence', [5,10]);
+  const fuDefault = await getSetting('followUpDefaultDays', 7);
+
+if (type === 'Prim Contact (email/call/other)'){
+  const d0 = new Date(dateTimeISO);
+  const baseDateISO = toDateOnlyISO(d0); // date-only, local
+  const due = new Date(d0.getTime());
+  due.setDate(due.getDate() + Number(primCadence[0] || 5));
+
+  await createTask({
+    companyId,
+    contactId,
+    taskType: 'Prim Contact follow-up',
+    dueDateISO: toDateOnlyISO(due),
+    notes: 'Auto: Prim Contact +'+(primCadence[0] || 5)+' days',
+    ruleSource: 'auto',
+    meta: {
+      kind: 'prim-contact',
+      sequence: 1,
+      baseDateISO: baseDateISO,
+      baseActivityId: a.id
+    }
+  });
+}
+ else if (createFollowUp){
+    let dueISO = followUpDueDateISO;
+    if (!dueISO){
+      const d0 = new Date(dateTimeISO);
+      d0.setDate(d0.getDate() + Number(fuDefault || 7));
+      dueISO = toDateOnlyISO(d0);
+    }
+    await createTask({
+      companyId,
+      contactId,
+      taskType: 'Follow-up',
+      dueDateISO: dueISO,
+      notes: 'From activity: '+type,
+      ruleSource: 'manual'
+    });
+  }
+
+  return a;
+}
+
+async function saveAttachmentBlob({companyId, activityId, file}){
+  const rec = {
+    id: uid(),
+    companyId,
+    activityId,
+    fileName: file.name || 'attachment',
+    mimeType: file.type || 'application/octet-stream',
+    sizeBytes: file.size || 0,
+    storedAs: 'blob',
+    blobData: file, // File is a Blob; IndexedDB can store it
+    referencePathOrNote: '',
+    uploadedAt: nowIso()
+  };
+  await idbAdd(STORES.attachments, rec);
+  return rec.id;
+}
+
+async function downloadAttachment(attachmentId){
+  const a = await idbGet(STORES.attachments, attachmentId);
+  if (!a) return;
+
+  if (a.storedAs === 'blob' && a.blobData){
+    const blob = a.blobData;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = a.fileName || 'attachment';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 2000);
+    return;
+  }
+
+  alert('Attachment is not stored as blob. Add a reference path/note instead.');
+}
+
+/* ==========================================================
+   [ANCHOR:ICS_EXPORT]
+   ========================================================== */
+function icsEscape(s){
+  return String(s || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/\n/g, '\\n')
+    .replace(/,/g, '\\,')
+    .replace(/;/g, '\\;');
+}
+function fmtIcsDateTimeLocal(dateISO, hour=10, minute=0){
+  // dateISO: YYYY-MM-DD (local)
+  const [y,m,d] = dateISO.split('-').map(x=>parseInt(x,10));
+  const dt = new Date(y, m-1, d, hour, minute, 0);
+  const pad = (n)=> String(n).padStart(2,'0');
+  return (
+    dt.getFullYear() +
+    pad(dt.getMonth()+1) +
+    pad(dt.getDate()) + 'T' +
+    pad(dt.getHours()) +
+    pad(dt.getMinutes()) +
+    pad(dt.getSeconds())
+  );
+}
+async function exportIcsForTasks(tasks, filename='reminders.ics'){
+  const hour = await getSetting('icsHour', 10);
+  const minute = await getSetting('icsMinute', 0);
+
+  const lines = [];
+  lines.push('BEGIN:VCALENDAR');
+  lines.push('VERSION:2.0');
+  lines.push('PRODID:-//Fundraising CRM MVP//EN');
+  lines.push('CALSCALE:GREGORIAN');
+
+  for (const t of tasks){
+    if (t.status !== TASK_STATUS.OPEN) continue;
+if (t.isDeleted) continue;
+    const company = await idbGet(STORES.companies, t.companyId);
+    const title = `${t.taskType}: ${company ? company.name : '(company)'}`
+    const uidLine = (t.id + '@fundraisingcrm.local');
+
+    const dtStart = fmtIcsDateTimeLocal(t.dueDate, hour, minute);
+    const dtEnd = fmtIcsDateTimeLocal(t.dueDate, hour, Math.min(59, minute+15));
+
+    lines.push('BEGIN:VEVENT');
+    lines.push('UID:' + icsEscape(uidLine));
+    lines.push('DTSTAMP:' + fmtIcsDateTimeLocal(toDateOnlyISO(new Date()), 0, 0));
+    lines.push('DTSTART:' + dtStart);
+    lines.push('DTEND:' + dtEnd);
+    lines.push('SUMMARY:' + icsEscape(title));
+    const desc = (t.notes ? t.notes + '\n' : '') + (company?.introducedBy ? ('Introduced by: ' + company.introducedBy + '\n') : '');
+    lines.push('DESCRIPTION:' + icsEscape(desc));
+    // alarm
+    lines.push('BEGIN:VALARM');
+    lines.push('TRIGGER:-PT10M');
+    lines.push('ACTION:DISPLAY');
+    lines.push('DESCRIPTION:' + icsEscape(title));
+    lines.push('END:VALARM');
+    lines.push('END:VEVENT');
+  }
+
+  lines.push('END:VCALENDAR');
+  downloadText(filename, lines.join('\r\n'), 'text/calendar;charset=utf-8');
+}
+
+/* ==========================================================
+   [ANCHOR:UI_ROUTER]
+   ========================================================== */
+const TAB_IDS = ['today','companies','events','reports','importexport','settings'];
+
+function showTab(tab){
+  $$$('.tab').forEach(t=> t.classList.toggle('active', t.dataset.tab === tab));
+  for (const id of TAB_IDS){
+    const el = $$('#view-' + id);
+    if (!el) continue;
+    el.classList.toggle('hidden', id !== tab);
+  }
+  // refresh
+  refreshAll();
+}
+
+$$$('.tab').forEach(t=>{
+  t.addEventListener('click', ()=> showTab(t.dataset.tab));
+});
+
+/* ==========================================================
+   [ANCHOR:RENDER]
+   ========================================================== */
+function renderTasksTable(tasks, companiesMap){
+  const todayISO = toDateOnlyISO(new Date());
+  const q = safeStr($$('#taskSearch').value).toLowerCase();
+  const filter = $$('#taskFilter').value;
+
+  let list = tasks.filter(t => t.status === TASK_STATUS.OPEN && !t.isDeleted);
+
+  if (filter === 'today') list = list.filter(t => t.dueDate === todayISO);
+  if (filter === 'overdue') list = list.filter(t => t.dueDate < todayISO);
+  if (filter === 'week'){
+    const end = new Date();
+    end.setDate(end.getDate() + 7);
+    const endISO = toDateOnlyISO(end);
+    list = list.filter(t => t.dueDate >= todayISO && t.dueDate <= endISO);
+  }
+
+  if (q){
+    list = list.filter(t=>{
+      const c = companiesMap.get(t.companyId);
+      const hay = (safeStr(c?.name)+' '+safeStr(t.notes)+' '+safeStr(t.taskType)).toLowerCase();
+      return hay.includes(q);
+    });
+  }
+
+  // sort by dueDate asc
+  list.sort((a,b)=> (a.dueDate || '').localeCompare(b.dueDate || ''));
+
+  const html = [];
+  html.push('<table class="table">');
+  html.push('<thead><tr>');
+  html.push('<th>Due</th><th>Task</th><th>Company</th><th>Notes</th><th>Actions</th>');
+  html.push('</tr></thead><tbody>');
+
+  for (const t of list){
+    const c = companiesMap.get(t.companyId);
+    const dot = taskDot(t, todayISO);
+    html.push('<tr>');
+    html.push(`<td><span class="chip"><span class="dot ${dot}"></span>${t.dueDate}</span></td>`);
+    html.push(`<td>${t.taskType}</td>`);
+    html.push(`<td><a href="#" data-open-company="${t.companyId}">${escapeHtml(c?.name || '(company)')}</a></td>`);
+    html.push(`<td class="muted">${escapeHtml(t.notes || '')}</td>`);
+
+const isPrim1 = (t.taskType === 'Prim Contact follow-up' && t.meta && t.meta.kind === 'prim-contact' && t.meta.sequence === 1);
+
+html.push(`<td>
+  <button class="miniBtn primary" data-done-task="${t.id}">Done</button>
+  <button class="miniBtn" data-snooze-task="${t.id}">Snooze</button>
+  <button class="miniBtn danger" data-del-task="${t.id}">Delete</button>
+</td>`);
+
+    html.push('</tr>');
+  }
+
+  html.push('</tbody></table>');
+
+  $$('#tasksTableWrap').innerHTML = html.join('');
+}
+
+function renderCompaniesTable(companies, contacts){
+  const q = safeStr($$('#companySearch').value).toLowerCase();
+  const statusF = $$('#companyStatusFilter').value;
+  const prioF = $$('#companyPriorityFilter').value;
+
+  const contactsByCompany = new Map();
+  for (const c of contacts){
+    if (!contactsByCompany.has(c.companyId)) contactsByCompany.set(c.companyId, []);
+    contactsByCompany.get(c.companyId).push(c);
+  }
+
+  let list = companies.slice();
+
+  if (statusF !== 'all') list = list.filter(x => x.pipelineStatus === statusF);
+  if (prioF !== 'all'){
+    if (prioF === '(blank)') list = list.filter(x => !safeStr(x.priority));
+    else list = list.filter(x => safeStr(x.priority).toUpperCase() === prioF);
+  }
+
+  if (q){
+    list = list.filter(x=>{
+      const cs = contactsByCompany.get(x.id) || [];
+      const hay = (safeStr(x.name)+' '+safeStr(x.introducedBy)+' '+safeStr(x.notes)+' '+
+                  cs.map(z=>safeStr(z.fullName)+' '+safeStr(z.email)+' '+safeStr(z.roleText)).join(' ')).toLowerCase();
+      return hay.includes(q);
+    });
+  }
+
+  // sort by status then updatedAt desc
+  list.sort((a,b)=>{
+    const s = (a.pipelineStatus||'').localeCompare(b.pipelineStatus||'');
+    if (s !== 0) return s;
+    return (b.updatedAt||'').localeCompare(a.updatedAt||'');
+  });
+
+  const html=[];
+  html.push('<table class="table"><thead><tr>');
+  html.push('<th>Company</th><th>Status</th><th>Priority</th><th>Introduced by</th><th>Contacts</th><th>Notes</th><th></th>');
+  html.push('</tr></thead><tbody>');
+
+  for (const c of list){
+    const cs = contactsByCompany.get(c.id) || [];
+    const contactsPreview = cs.slice(0,3).map(z=>{
+      const label = [safeStr(z.fullName)||'(no name)', safeStr(z.email)].filter(Boolean).join(' - ');
+      return `<span class="chip">${escapeHtml(label)}</span>`;
+    }).join(' ');
+    html.push('<tr>');
+    html.push(`<td><a href="#" data-open-company="${c.id}">${escapeHtml(c.name)}</a></td>`);
+    html.push(`<td><span class="chip">${escapeHtml(c.pipelineStatus || '')}</span></td>`);
+    html.push(`<td>${escapeHtml(c.priority || '')}</td>`);
+    html.push(`<td class="muted">${escapeHtml(c.introducedBy || '')}</td>`);
+    html.push(`<td>${contactsPreview}</td>`);
+    html.push(`<td class="muted">${escapeHtml((c.notes||'').slice(0,120))}${(c.notes||'').length>120?'…':''}</td>`);
+    html.push(`<td><button class="miniBtn" data-open-company="${c.id}">Open</button></td>`);
+    html.push('</tr>');
+  }
+
+  html.push('</tbody></table>');
+  $$('#companiesTableWrap').innerHTML = html.join('');
+  $$('#companiesCount').textContent = String(companies.length);
+}
+
+function renderEventsTable(events){
+  events.sort((a,b)=> (a.startDate||'').localeCompare(b.startDate||''));
+  const html=[];
+  html.push('<table class="table"><thead><tr>');
+  html.push('<th>Name</th><th>Start</th><th>End</th><th>Default reminders</th><th></th>');
+  html.push('</tr></thead><tbody>');
+  for (const e of events){
+    html.push('<tr>');
+    html.push(`<td>${escapeHtml(e.name)}</td>`);
+    html.push(`<td>${escapeHtml(e.startDate||'')}</td>`);
+    html.push(`<td>${escapeHtml(e.endDate||'')}</td>`);
+    html.push(`<td class="muted">${escapeHtml((e.defaultReminderOffsetsDays||[]).join(', '))}</td>`);
+    html.push(`<td><button class="miniBtn danger" data-del-event="${e.id}">Delete</button></td>`);
+    html.push('</tr>');
+  }
+  html.push('</tbody></table>');
+  $$('#eventsTableWrap').innerHTML = html.join('');
+}
+
+function escapeHtml(s){
+  return String(s||'').replace(/[&<>"']/g, (ch)=>({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[ch]));
+}
+
+/* ==========================================================
+   [ANCHOR:MODALS]
+   Company modal: edit + contacts + activities + tasks
+   ========================================================== */
+function openModal(contentHtml, onBind){
+  const root = $$('#modalRoot');
+  root.classList.remove('hidden');
+  root.innerHTML = `
+    <div class="modalBackdrop" id="modalBackdrop">
+      <div class="modal">
+        ${contentHtml}
+      </div>
+    </div>
+  `;
+  $$('#modalBackdrop').addEventListener('click', (e)=>{
+    if (e.target.id === 'modalBackdrop'){
+      closeModal();
+    }
+  });
+  if (onBind) onBind(root);
+}
+function closeModal(){
+  const root = $$('#modalRoot');
+  root.classList.add('hidden');
+  root.innerHTML = '';
+}
+
+async function openCompanyModal(companyId){
+  const company = await idbGet(STORES.companies, companyId);
+  if (!company) return;
+  const contacts = (await idbGetAll(STORES.contacts)).filter(c=>c.companyId===companyId);
+  const activities = (await idbGetAll(STORES.activities)).filter(a=>a.companyId===companyId);
+  const tasks = (await idbGetAll(STORES.tasks)).filter(t=>t.companyId===companyId);
+const events = await idbGetAll(STORES.events);
+const attachments = (await idbGetAll(STORES.attachments)).filter(x=>x.companyId===companyId);
+
+  activities.sort((a,b)=> (b.dateTime||'').localeCompare(a.dateTime||''));
+  tasks.sort((a,b)=> (a.dueDate||'').localeCompare(b.dueDate||''));
+
+  const modalHtml = `
+    <div class="mh">
+      <div class="row" style="gap:10px;">
+        <strong>${escapeHtml(company.name)}</strong>
+        <span class="badge">${escapeHtml(company.pipelineStatus||'')}</span>
+      </div>
+      <div class="row">
+        <button class="miniBtn" id="btnCloseModal">Close</button>
+      </div>
+    </div>
+    <div class="mb">
+      <div class="two">
+        <div class="card" style="box-shadow:none;">
+          <div class="hd"><strong>Company</strong></div>
+          <div class="bd">
+            <div class="row">
+              <div class="field">
+                <label>Status</label>
+                <select id="cStatus">
+                  <option>Prospect</option>
+                  <option>Contactat</option>
+                  <option>In discutii</option>
+                  <option>Propunere trimisa</option>
+                  <option>Negociere</option>
+                  <option>Castigat</option>
+                  <option>Pierdut</option>
+                  <option>Nurture</option>
+                </select>
+              </div>
+              <div class="field" style="max-width:140px;">
+                <label>Priority</label>
+                <select id="cPriority">
+                  <option value=""></option>
+                  <option value="A">A</option>
+                  <option value="B">B</option>
+                  <option value="C">C</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Introduced by (Account RM)</label>
+                <input id="cIntroducedBy" placeholder="ex: Lili" />
+              </div>
+            </div>
+<div class="row">
+  <div class="field">
+    <label>Next steps</label>
+    <input id="cNextSteps" placeholder="ex: follow-up email, set meeting..." />
+  </div>
+  <div class="field" style="max-width:220px;">
+    <label>Contribution type</label>
+    <input id="cContribution" placeholder="Sponsorizare / Redirect 20% / ..." />
+  </div>
+  <div class="field" style="max-width:220px;">
+    <label>Estimated EUR</label>
+    <input id="cEstimate" placeholder="ex: 5000" />
+  </div>
+</div>
+
+<div class="row">
+  <div class="field" style="max-width:360px;">
+    <label>Event (CRM)</label>
+    <select id="cEvent">
+      <option value=""></option>
+    </select>
+  </div>
+</div>
+
+            <div class="field">
+              <div class="row" style="justify-content:space-between; align-items:flex-end;">
+                <label style="margin:0;">Notes (history)</label>
+                <button class="miniBtn" id="btnEditNotes">Edit</button>
+              </div>
+              <textarea id="cNotes" placeholder="notes..." readonly></textarea>
+
+              <div class="sep"></div>
+
+              <label>Add note</label>
+              <div class="row" style="gap:10px; align-items:flex-end;">
+                <textarea id="cNewNote" placeholder="Write a new note, then press Add..." style="min-height:64px;"></textarea>
+                <button class="miniBtn primary" id="btnAddNote" style="height:40px;">Add</button>
+              </div>
+              <div class="muted">Add will append a timestamped entry to Notes (history).</div>
+            </div>
+
+            <div class="row">
+              <button class="miniBtn primary" id="btnSaveCompany">Save</button>
+              <button class="miniBtn danger" id="btnDeleteCompany">Delete</button>
+              <span class="muted" id="companySavedMsg"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="box-shadow:none;">
+          <div class="hd">
+            <strong>Contacts</strong>
+            <button class="miniBtn primary" id="btnAddContact">+ Contact</button>
+          </div>
+          <div class="bd">
+            <div id="contactsList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="two">
+        <div class="card" style="box-shadow:none;">
+          <div class="hd">
+            <strong>Activities</strong>
+            <button class="miniBtn primary" id="btnAddActivity">+ Activity</button>
+          </div>
+          <div class="bd">
+            <div id="activitiesList"></div>
+          </div>
+        </div>
+
+        <div class="card" style="box-shadow:none;">
+          <div class="hd">
+            <strong>Tasks</strong>
+            <button class="miniBtn" id="btnAddTask">+ Task</button>
+          </div>
+          <div class="bd">
+            <div id="tasksList"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  openModal(modalHtml, (root)=>{
+    $$('#btnCloseModal', root).onclick = closeModal;
+
+    // prefill company
+    const statusEl = $$('#cStatus', root);
+    statusEl.value = company.pipelineStatus || 'Prospect';
+    $$('#cPriority', root).value = company.priority || '';
+    $$('#cIntroducedBy', root).value = company.introducedBy || '';
+    $$('#cNextSteps', root).value = company.nextStepText || '';
+    $$('#cContribution', root).value = company.contributionType || '';
+    $$('#cEstimate', root).value = company.estimatedValueEUR || '';
+    $$('#cNotes', root).value = company.notes || '';
+
+    // Notes UX: history textarea is read-only by default; edit via button
+    const notesEl = $$('#cNotes', root);
+    const btnEditNotes = $$('#btnEditNotes', root);
+    const newNoteEl = $$('#cNewNote', root);
+    const btnAddNote = $$('#btnAddNote', root);
+
+    const pad2 = (n)=>String(n).padStart(2,'0');
+    const stampLocal = (d=new Date())=>{
+      // format: YYYY-MM-DD HH:MM (local)
+      return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    };
+
+    if (notesEl){
+      notesEl.setAttribute('readonly', 'readonly');
+    }
+
+    if (btnEditNotes && notesEl){
+      btnEditNotes.onclick = ()=>{
+        const isRO = notesEl.hasAttribute('readonly');
+        if (isRO){
+          notesEl.removeAttribute('readonly');
+          notesEl.focus();
+          btnEditNotes.textContent = 'Done';
+        } else {
+          notesEl.setAttribute('readonly', 'readonly');
+          btnEditNotes.textContent = 'Edit';
+        }
+      };
+    }
+
+    if (btnAddNote && notesEl && newNoteEl){
+      btnAddNote.onclick = ()=>{
+        const text = (newNoteEl.value || '').trim();
+        if (!text){
+          alert('Note is empty.');
+          return;
+        }
+
+        const entry = `[${stampLocal()}]\n${text}\n`;
+
+        const existing = (notesEl.value || '').trim();
+        notesEl.value = existing ? (existing + '\n\n' + entry) : entry;
+
+  // keep history read-only (even if user clicked Edit before)
+  notesEl.setAttribute('readonly', 'readonly');
+  if (btnEditNotes) btnEditNotes.textContent = 'Edit';
+
+  // UX: scroll to bottom so the latest entry is visible
+  notesEl.scrollTop = notesEl.scrollHeight;
+  notesEl.focus();
+  setTimeout(()=>notesEl.blur(), 150);
+
+  newNoteEl.value = '';
+  toast('Note added (remember to Save company)');
+      };
+    }
+
+// fill events dropdown
+const evSel = $$('#cEvent', root);
+if (evSel){
+  // sort by startDate then name
+  const evList = (events || []).slice().sort((a,b)=> (a.startDate||'').localeCompare(b.startDate||'') || (a.name||'').localeCompare(b.name||''));
+  for (const e of evList){
+    const opt = document.createElement('option');
+    opt.value = e.id;
+    opt.textContent = `${e.name}${e.startDate ? (' ('+e.startDate+')') : ''}`;
+    evSel.appendChild(opt);
+  }
+  evSel.value = company.eventId || '';
+}
+
+    $$('#btnSaveCompany', root).onclick = async ()=>{
+      company.pipelineStatus = statusEl.value;
+      company.priority = $$('#cPriority', root).value;
+      company.introducedBy = $$('#cIntroducedBy', root).value.trim();
+      company.nextStepText = $$('#cNextSteps', root).value.trim();
+      company.contributionType = $$('#cContribution', root).value.trim();
+      company.estimatedValueEUR = $$('#cEstimate', root).value.trim();
+      company.notes = $$('#cNotes', root).value;
+company.eventId = $$('#cEvent', root)?.value || '';
+company.updatedAt = nowIso();
+      await idbPut(STORES.companies, company);
+
+      // Lost rule: auto create re-entry task in +90 days
+      const lostDays = await getSetting('lostReentryDays', 90);
+      if (company.pipelineStatus === 'Pierdut'){
+        const d = new Date();
+        d.setDate(d.getDate() + Number(lostDays||90));
+        await createTask({
+          companyId: company.id,
+          taskType: 'Lost re-entry',
+          dueDateISO: toDateOnlyISO(d),
+          notes: 'Auto: Lost +'+(lostDays||90)+' days',
+          ruleSource: 'auto'
+        });
+      }
+
+      $$('#companySavedMsg', root).textContent = 'Saved.';
+      toast('Saved company');
+      refreshAll();
+      // reload modal lists
+      openCompanyModal(companyId);
+    };
+
+$$('#btnDeleteCompany', root).onclick = async ()=>{
+  if (!confirm('Delete company and all related contacts/activities/tasks/attachments?')) return;
+
+  const allContacts = await idbGetAll(STORES.contacts);
+  const allActs = await idbGetAll(STORES.activities);
+  const allTasks = await idbGetAll(STORES.tasks);
+  const allAtts = await idbGetAll(STORES.attachments);
+
+  // delete attachments first (by company)
+  for (const att of allAtts.filter(x=>x.companyId===companyId)){
+    await idbDelete(STORES.attachments, att.id);
+  }
+
+  // delete children
+  for (const c of allContacts.filter(x=>x.companyId===companyId)) await idbDelete(STORES.contacts, c.id);
+  for (const a of allActs.filter(x=>x.companyId===companyId)) await idbDelete(STORES.activities, a.id);
+  for (const t of allTasks.filter(x=>x.companyId===companyId)) await idbDelete(STORES.tasks, t.id);
+
+  // delete company
+  await idbDelete(STORES.companies, companyId);
+
+  toast('Deleted company');
+  closeModal();
+  refreshAll();
+};
+
+    // render contacts list
+    const contactsWrap = $$('#contactsList', root);
+    contactsWrap.innerHTML = renderContactsEditor(contacts);
+
+    contactsWrap.addEventListener('click', async (e)=>{
+      const del = e.target.closest('[data-del-contact]');
+      if (del){
+        const id = del.getAttribute('data-del-contact');
+        await idbDelete(STORES.contacts, id);
+        toast('Deleted contact');
+        openCompanyModal(companyId);
+      }
+    });
+
+    $$('#btnAddContact', root).onclick = async ()=>{
+      const c = {
+        id: uid(),
+        companyId,
+        fullName:'',
+        roleText:'',
+        phone:'',
+        email:'',
+        notes:'',
+        createdAt: nowIso(),
+        updatedAt: nowIso()
+      };
+      await idbAdd(STORES.contacts, c);
+      openCompanyModal(companyId);
+    };
+
+    contactsWrap.addEventListener('change', async (e)=>{
+      const rowEl = e.target.closest('[data-contact-row]');
+      if (!rowEl) return;
+      const id = rowEl.getAttribute('data-contact-row');
+      const c = await idbGet(STORES.contacts, id);
+      if (!c) return;
+      c.fullName = $$('#ctName_'+id, root).value.trim();
+      c.roleText = $$('#ctRole_'+id, root).value.trim();
+      c.email = $$('#ctEmail_'+id, root).value.trim();
+      c.phone = $$('#ctPhone_'+id, root).value.trim();
+      c.updatedAt = nowIso();
+      await idbPut(STORES.contacts, c);
+    });
+
+    // activities list
+    const actsWrap = $$('#activitiesList', root);
+    actsWrap.innerHTML = renderActivitiesList(activities, contacts, attachments);
+actsWrap.addEventListener('click', async (e)=>{
+  // download attachment
+  const dl = e.target.closest('[data-dl-att]');
+  if (dl){
+    const attId = dl.getAttribute('data-dl-att');
+    await downloadAttachment(attId);
+    return;
+  }
+
+  // delete activity (and its attachments)
+  const del = e.target.closest('[data-del-act]');
+  if (del){
+    const actId = del.getAttribute('data-del-act');
+    if (!confirm('Delete this activity? (attachments linked to it will also be deleted)')) return;
+
+    // delete attachments belonging to this activity
+    const allAtts = await idbGetAll(STORES.attachments);
+    for (const a of allAtts.filter(x => x.activityId === actId)){
+      await idbDelete(STORES.attachments, a.id);
+    }
+
+    // delete activity
+    await idbDelete(STORES.activities, actId);
+
+    toast('Activity deleted');
+    openCompanyModal(companyId);
+    refreshAll();
+    return;
+  }
+
+  // edit activity
+  const edit = e.target.closest('[data-edit-act]');
+  if (edit){
+    const actId = edit.getAttribute('data-edit-act');
+    openEditActivityModal(companyId, actId);
+    return;
+  }
+});
+
+    $$('#btnAddActivity', root).onclick = ()=> openAddActivityModal(companyId);
+
+    // tasks list
+    const tasksWrap = $$('#tasksList', root);
+    tasksWrap.innerHTML = renderTasksList(tasks);
+
+    tasksWrap.addEventListener('click', async (e)=>{
+      const done = e.target.closest('[data-done]');
+      const snooze = e.target.closest('[data-snooze]');
+      if (done){
+        await markTaskDone(done.getAttribute('data-done'));
+        toast('Task done');
+        openCompanyModal(companyId);
+        refreshAll();
+      }
+      if (snooze){
+        const id = snooze.getAttribute('data-snooze');
+        const t = await idbGet(STORES.tasks, id);
+        if (!t) return;
+        const newDue = prompt('New due date (YYYY-MM-DD):', t.dueDate);
+        if (!newDue) return;
+        await snoozeTask(id, newDue);
+        toast('Task snoozed');
+        openCompanyModal(companyId);
+        refreshAll();
+      }
+    });
+
+    $$('#btnAddTask', root).onclick = async ()=>{
+      const due = prompt('Due date (YYYY-MM-DD):', toDateOnlyISO(new Date()));
+      if (!due) return;
+      await createTask({companyId, taskType:'Custom', dueDateISO: due, notes:'', ruleSource:'manual'});
+      openCompanyModal(companyId);
+      refreshAll();
+    };
+  });
+}
+
+function renderContactsEditor(contacts){
+  const html=[];
+  if (!contacts.length){
+    html.push('<div class="muted">No contacts yet.</div>');
+    return html.join('');
+  }
+
+  html.push('<div class="contactCards">');
+
+  for (const c of contacts){
+    html.push(`<div class="contactCard" data-contact-row="${c.id}">`);
+
+    // header
+    html.push('<div class="contactCardHd">');
+    html.push(`<strong>${escapeHtml(c.fullName || '(no name)')}</strong>`);
+    html.push(`<button class="miniBtn danger" data-del-contact="${c.id}">Delete</button>`);
+    html.push('</div>');
+
+    // body fields (vertical)
+    html.push('<div class="contactCardBd">');
+
+    html.push('<div class="field">');
+    html.push('<label>Name</label>');
+    html.push(`<input id="ctName_${c.id}" value="${escapeHtml(c.fullName||'')}" placeholder="name"/>`);
+    html.push('</div>');
+
+    html.push('<div class="field">');
+    html.push('<label>Role</label>');
+    html.push(`<input id="ctRole_${c.id}" value="${escapeHtml(c.roleText||'')}" placeholder="CSR / GM"/>`);
+    html.push('</div>');
+
+    html.push('<div class="field">');
+    html.push('<label>Email</label>');
+    html.push(`<input id="ctEmail_${c.id}" value="${escapeHtml(c.email||'')}" placeholder="email"/>`);
+    html.push('</div>');
+
+    html.push('<div class="field">');
+    html.push('<label>Phone</label>');
+    html.push(`<input id="ctPhone_${c.id}" value="${escapeHtml(c.phone||'')}" placeholder="phone"/>`);
+    html.push('</div>');
+
+    html.push('</div>'); // contactCardBd
+    html.push('</div>'); // contactCard
+  }
+
+  html.push('</div>'); // contactCards
+  return html.join('');
+}
+
+function renderActivitiesList(activities, contacts, attachments){
+  const contactMap = new Map(contacts.map(c=>[c.id, c]));
+const attByActivity = new Map();
+for (const a of (attachments || [])){
+  if (!attByActivity.has(a.activityId)) attByActivity.set(a.activityId, []);
+  attByActivity.get(a.activityId).push(a);
+}
+  const html=[];
+  if (!activities.length){
+    html.push('<div class="muted">No activities yet. Add one to start generating reminders.</div>');
+    return html.join('');
+  }
+html.push('<table class="table"><thead><tr>');
+html.push('<th>Date</th><th>Type</th><th>Contact</th><th>Outcome</th><th>Attachments</th><th>Notes</th><th>Actions</th>');
+  html.push('</tr></thead><tbody>');
+  for (const a of activities){
+    const ct = a.contactId ? contactMap.get(a.contactId) : null;
+    html.push('<tr>');
+html.push(`<td>${escapeHtml(a.dateTime ? a.dateTime.slice(0,16).replace('T',' ') : '')}</td>`);
+html.push(`<td>${escapeHtml(a.type||'')}</td>`);
+html.push(`<td class="muted">${escapeHtml(ct ? (ct.fullName||ct.email||'') : '')}</td>`);
+html.push(`<td>${escapeHtml(a.outcome||'')}</td>`);
+
+// attachments cell
+const atts = attByActivity.get(a.id) || [];
+if (!atts.length){
+  html.push(`<td class="muted">-</td>`);
+} else {
+  const chips = atts.map(x=>{
+    const label = (x.fileName || 'attachment');
+    return `<span class="chip">
+      ${escapeHtml(label)}
+      <button class="miniBtn" style="margin-left:6px;" data-dl-att="${x.id}">Download</button>
+    </span>`;
+  }).join(' ');
+  html.push(`<td>${chips}</td>`);
+}
+
+html.push(`<td class="muted">${escapeHtml((a.notes||'').slice(0,160))}${(a.notes||'').length>160?'…':''}</td>`);
+html.push(`<td>
+  <button class="miniBtn" data-edit-act="${a.id}">Edit</button>
+  <button class="miniBtn danger" data-del-act="${a.id}">Delete</button>
+</td>`);
+
+    html.push('</tr>');
+  }
+  html.push('</tbody></table>');
+  return html.join('');
+}
+
+function renderTasksList(tasks){
+  const todayISO = toDateOnlyISO(new Date());
+  const open = tasks.filter(t=>t.status===TASK_STATUS.OPEN && !t.isDeleted).sort((a,b)=> (a.dueDate||'').localeCompare(b.dueDate||''));
+  const done = tasks.filter(t=>t.status===TASK_STATUS.DONE).sort((a,b)=> (b.updatedAt||'').localeCompare(a.updatedAt||''));
+  const html=[];
+  html.push('<div class="muted">Open tasks</div>');
+  html.push('<table class="table"><thead><tr><th>Due</th><th>Task</th><th>Notes</th><th></th></tr></thead><tbody>');
+  for (const t of open){
+    const dot = taskDot(t, todayISO);
+    html.push('<tr>');
+    html.push(`<td><span class="chip"><span class="dot ${dot}"></span>${escapeHtml(t.dueDate)}</span></td>`);
+    html.push(`<td>${escapeHtml(t.taskType||'')}</td>`);
+    html.push(`<td class="muted">${escapeHtml(t.notes||'')}</td>`);
+    html.push(`<td>
+      <button class="miniBtn primary" data-done="${t.id}">Done</button>
+      <button class="miniBtn" data-snooze="${t.id}">Snooze</button>
+    </td>`);
+    html.push('</tr>');
+  }
+  html.push('</tbody></table>');
+
+  html.push('<div class="sep"></div>');
+  html.push('<div class="muted">Done</div>');
+  html.push('<table class="table"><thead><tr><th>Done at</th><th>Task</th><th>Notes</th></tr></thead><tbody>');
+  for (const t of done.slice(0,10)){
+    html.push('<tr>');
+    html.push(`<td class="muted">${escapeHtml((t.updatedAt||'').slice(0,16).replace('T',' '))}</td>`);
+    html.push(`<td>${escapeHtml(t.taskType||'')}</td>`);
+    html.push(`<td class="muted">${escapeHtml(t.notes||'')}</td>`);
+    html.push('</tr>');
+  }
+  html.push('</tbody></table>');
+  return html.join('');
+}
+
+/* ==========================================================
+   [ANCHOR:EDIT_ACTIVITY_MODAL]
+   ========================================================== */
+async function openEditActivityModal(companyId, activityId){
+  const company = await idbGet(STORES.companies, companyId);
+  const contacts = (await idbGetAll(STORES.contacts)).filter(c=>c.companyId===companyId);
+  const act = await idbGet(STORES.activities, activityId);
+  if (!act) { alert('Activity not found'); return; }
+
+  const modalHtml = `
+    <div class="mh">
+      <strong>Edit activity - ${escapeHtml(company?.name||'')}</strong>
+      <button class="miniBtn" id="btnClose">Close</button>
+    </div>
+    <div class="mb">
+      <div class="row">
+        <div class="field">
+          <label>Type</label>
+          <select id="aType"></select>
+        </div>
+        <div class="field">
+          <label>Contact (optional)</label>
+          <select id="aContact">
+            <option value="">(none)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Date/time</label>
+          <input id="aDt" type="datetime-local" />
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label>Outcome (short)</label>
+          <input id="aOutcome" placeholder="ex: no reply / meeting set / sent docs..." />
+        </div>
+      </div>
+
+      <div class="row" id="contractFields" style="display:none;">
+        <div class="field" style="max-width:240px;">
+          <label>Contract type</label>
+          <select id="aContractType">
+            <option value=""></option>
+            <option value="Sponsorizare">Sponsorizare</option>
+            <option value="Prestari servicii">Prestari servicii</option>
+          </select>
+        </div>
+        <div class="field" style="max-width:240px;">
+          <label>Amount EUR (optional)</label>
+          <input id="aAmountEUR" type="number" step="0.01" placeholder="ex: 5000" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Notes</label>
+        <textarea id="aNotes"></textarea>
+      </div>
+
+      <div class="field">
+        <label>Add attachments (optional)</label>
+        <input id="aFiles" type="file" multiple />
+        <div class="muted">Existing attachments remain; you can only add more here.</div>
+      </div>
+
+      <div class="sep"></div>
+      <div class="row">
+        <button class="btn primary" id="btnSaveAct">Save changes</button>
+      </div>
+      <div class="muted">
+        Note: Editing an activity does not auto-rebuild tasks. Manage tasks separately in Tasks list.
+      </div>
+    </div>
+  `;
+
+  openModal(modalHtml, (root)=>{
+    $$('#btnClose', root).onclick = closeModal;
+
+    // fill type
+    const selType = $$('#aType', root);
+    for (const t of ACT_TYPES){
+      const opt = document.createElement('option');
+      opt.value = t; opt.textContent = t;
+      selType.appendChild(opt);
+    }
+    selType.value = act.type || 'Prim Contact (email/call/other)';
+
+    // fill contacts
+    const selC = $$('#aContact', root);
+    for (const c of contacts){
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = (c.fullName || c.email || '(contact)');
+      selC.appendChild(opt);
+    }
+    selC.value = act.contactId || '';
+
+    // datetime-local needs local value; we convert from ISO
+    const d = act.dateTime ? new Date(act.dateTime) : new Date();
+    const pad=(n)=>String(n).padStart(2,'0');
+    const localVal = d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
+    $$('#aDt', root).value = localVal;
+
+    // other fields
+    $$('#aOutcome', root).value = act.outcome || '';
+    $$('#aNotes', root).value = act.notes || '';
+
+    // contract fields toggle
+    const contractFields = $$('#contractFields', root);
+    const toggleContractFields = ()=>{
+      const isSigned = (selType.value === 'Contract signed');
+      if (contractFields) contractFields.style.display = isSigned ? '' : 'none';
+    };
+    selType.addEventListener('change', toggleContractFields);
+    toggleContractFields();
+
+    $$('#aContractType', root).value = act.contractType || '';
+    $$('#aAmountEUR', root).value = act.amountEUR || '';
+
+    // save
+    $$('#btnSaveAct', root).onclick = async ()=>{
+      const dtLocal = $$('#aDt', root).value;
+      if (!dtLocal){ alert('Date/time required'); return; }
+
+      // update fields
+      act.type = selType.value;
+      act.contactId = selC.value || '';
+      act.dateTime = new Date(dtLocal).toISOString();
+      act.outcome = $$('#aOutcome', root).value.trim();
+      act.notes = $$('#aNotes', root).value;
+
+      act.contractType = ($$('#aContractType', root)?.value || '');
+      act.amountEUR = ($$('#aAmountEUR', root)?.value || '');
+
+      // append_attach
+      const filesEl = $$('#aFiles', root);
+      const files = filesEl ? Array.from(filesEl.files || []) : [];
+      if (files.length){
+        const existing = Array.isArray(act.attachmentIds) ? act.attachmentIds.slice() : [];
+        for (const f of files){
+          const attId = await saveAttachmentBlob({companyId, activityId: act.id, file: f});
+          existing.push(attId);
+        }
+        act.attachmentIds = existing;
+      } else {
+        act.attachmentIds = Array.isArray(act.attachmentIds) ? act.attachmentIds : [];
+      }
+
+      act.updatedAt = nowIso();
+      await idbPut(STORES.activities, act);
+
+      toast('Activity updated');
+      closeModal();
+      openCompanyModal(companyId);
+      refreshAll();
+    };
+  });
+}
+
+async function openAddActivityModal(companyId){
+  const company = await idbGet(STORES.companies, companyId);
+  const contacts = (await idbGetAll(STORES.contacts)).filter(c=>c.companyId===companyId);
+
+  const modalHtml = `
+    <div class="mh">
+      <strong>Add activity - ${escapeHtml(company?.name||'')}</strong>
+      <button class="miniBtn" id="btnClose">Close</button>
+    </div>
+    <div class="mb">
+      <div class="row">
+        <div class="field">
+          <label>Type</label>
+          <select id="aType"></select>
+        </div>
+        <div class="field">
+          <label>Contact (optional)</label>
+          <select id="aContact">
+            <option value="">(none)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Date/time</label>
+          <input id="aDt" type="datetime-local" />
+        </div>
+      </div>
+
+<div class="row">
+  <div class="field">
+    <label>Outcome (short)</label>
+    <input id="aOutcome" placeholder="ex: no reply / meeting set / sent docs..." />
+  </div>
+</div>
+
+<!-- PATCH 4.2.1 START -->
+<div class="row" id="contractFields" style="display:none;">
+  <div class="field" style="max-width:240px;">
+    <label>Contract type</label>
+    <select id="aContractType">
+      <option value=""></option>
+      <option value="Sponsorizare">Sponsorizare</option>
+      <option value="Prestari servicii">Prestari servicii</option>
+    </select>
+  </div>
+  <div class="field" style="max-width:240px;">
+    <label>Amount EUR (optional)</label>
+    <input id="aAmountEUR" type="number" step="0.01" placeholder="ex: 5000" />
+  </div>
+</div>
+<!-- PATCH 4.2.1 END -->
+
+<div class="field">
+  <label>Notes</label>
+  <textarea id="aNotes"></textarea>
+</div>
+
+<div class="field">
+  <label>Attachments (stored offline in this browser)</label>
+  <input id="aFiles" type="file" multiple />
+  <div class="muted">Tip: keep files reasonable in size. Attachments are stored in IndexedDB (browser storage).</div>
+</div>
+
+      <div class="row">
+        <label class="chip"><input type="checkbox" id="aCreateFu" style="width:auto; margin-right:8px;">Create follow-up task</label>
+        <div class="field" style="max-width:220px;">
+          <label>Follow-up due date (optional)</label>
+          <input id="aFuDate" type="date" />
+        </div>
+      </div>
+
+      <div class="sep"></div>
+      <div class="row">
+        <button class="btn primary" id="btnSaveAct">Save</button>
+      </div>
+      <div class="muted">Note: "Prim Contact" auto-creates +5d task (configurable in Settings).</div>
+    </div>
+  `;
+  openModal(modalHtml, (root)=>{
+    $$('#btnClose', root).onclick = closeModal;
+
+    // fill type
+    const selType = $$('#aType', root);
+    for (const t of ACT_TYPES){
+      const opt = document.createElement('option');
+      opt.value = t; opt.textContent = t;
+      selType.appendChild(opt);
+    }
+    selType.value = 'Prim Contact (email/call/other)';
+
+    const contractFields = $$('#contractFields', root);
+    const toggleContractFields = ()=>{
+      const isSigned = (selType.value === 'Contract signed');
+      if (contractFields) contractFields.style.display = isSigned ? '' : 'none';
+    };
+    selType.addEventListener('change', toggleContractFields);
+    toggleContractFields();
+
+    // fill contacts
+    const selC = $$('#aContact', root);
+    for (const c of contacts){
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = (c.fullName || c.email || '(contact)');
+      selC.appendChild(opt);
+    }
+
+    // set default dt now
+    const dtNow = new Date();
+    const pad=(n)=>String(n).padStart(2,'0');
+    const localVal = dtNow.getFullYear()+'-'+pad(dtNow.getMonth()+1)+'-'+pad(dtNow.getDate())+'T'+pad(dtNow.getHours())+':'+pad(dtNow.getMinutes());
+    $$('#aDt', root).value = localVal;
+
+    $$('#btnSaveAct', root).onclick = async ()=>{
+      const type = selType.value;
+      const contactId = selC.value || '';
+      const dtLocal = $$('#aDt', root).value;
+      if (!dtLocal){
+        alert('Date/time required');
+        return;
+      }
+      // datetime-local returns local; convert to ISO with timezone offset
+      const iso = new Date(dtLocal).toISOString();
+
+      const createFu = $$('#aCreateFu', root).checked;
+      const fuDate = $$('#aFuDate', root).value || '';
+
+// create activity id first, then attach files referencing it
+const newActId = uid();
+
+// 1) save activity first (without attachments), so task engine can run
+await addActivity({
+  companyId,
+  contactId,
+  type,
+  dateTimeISO: iso,
+  outcome: $$('#aOutcome', root).value.trim(),
+  notes: $$('#aNotes', root).value,
+  createFollowUp: createFu,
+  followUpDueDateISO: fuDate,
+
+  // contract signed extras
+  contractType: ($$('#aContractType', root)?.value || ''),
+  amountEUR: ($$('#aAmountEUR', root)?.value || ''),
+
+  attachmentIds: [],
+  idOverride: newActId
+});
+
+// 2) save attachments (if any), then patch activity with attachmentIds
+const filesEl = $$('#aFiles', root);
+const files = filesEl ? Array.from(filesEl.files || []) : [];
+if (files.length){
+  const attachmentIds = [];
+  for (const f of files){
+    const attId = await saveAttachmentBlob({companyId, activityId: newActId, file: f});
+    attachmentIds.push(attId);
+  }
+  const act = await idbGet(STORES.activities, newActId);
+  if (act){
+    act.attachmentIds = attachmentIds;
+    act.updatedAt = nowIso();
+    await idbPut(STORES.activities, act);
+  }
+}
+
+      toast('Activity saved');
+      closeModal();
+      openCompanyModal(companyId);
+      refreshAll();
+    };
+  });
+}
+
+/* ==========================================================
+   [ANCHOR:EXPORTS]
+   ========================================================== */
+function toCsv(rows, headers){
+  const esc = (v)=>{
+    const s = (v===null || v===undefined) ? '' : String(v);
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+    return s;
+  }
+  const lines = [];
+  lines.push(headers.map(esc).join(','));
+  for (const r of rows){
+    lines.push(headers.map(h=>esc(r[h])).join(','));
+  }
+  return lines.join('\n');
+}
+
+function toXlsHtml(tableTitle, rows, headers){
+  // Excel-compatible HTML (.xls)
+  const th = headers.map(h=>`<th>${escapeHtml(h)}</th>`).join('');
+  const tr = rows.map(r=>{
+    const tds = headers.map(h=>`<td>${escapeHtml(r[h] ?? '')}</td>`).join('');
+    return `<tr>${tds}</tr>`;
+  }).join('');
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>
+    <table border="1">
+      <caption>${escapeHtml(tableTitle)}</caption>
+      <thead><tr>${th}</tr></thead>
+      <tbody>${tr}</tbody>
+    </table>
+  </body></html>`;
+}
+
+/* ==========================================================
+   [ANCHOR:REFRESH_ALL]
+   ========================================================== */
+async function refreshAll(){
+  if (!db) return;
+
+  // today badge
+  $$('#todayDateBadge').textContent = toDateOnlyISO(new Date());
+
+  const companies = await idbGetAll(STORES.companies);
+  const contacts = await idbGetAll(STORES.contacts);
+  const tasks = await idbGetAll(STORES.tasks);
+  const activities = await idbGetAll(STORES.activities);
+  const events = await idbGetAll(STORES.events);
+
+  // maps
+  const companiesMap = new Map(companies.map(c=>[c.id, c]));
+
+  // KPIs
+  const todayISO = toDateOnlyISO(new Date());
+  const openTasks = tasks.filter(t=>t.status===TASK_STATUS.OPEN && !t.isDeleted);
+  const overdue = openTasks.filter(t=>t.dueDate < todayISO);
+  const dueToday = openTasks.filter(t=>t.dueDate === todayISO);
+
+  $$('#kpiOpen').textContent = String(openTasks.length);
+  $$('#kpiOverdue').textContent = String(overdue.length);
+  $$('#kpiDueToday').textContent = String(dueToday.length);
+
+  // weekly
+  const weeklyTarget = await getSetting('weeklyTarget', 10);
+  $$('#weeklyTarget').textContent = String(weeklyTarget);
+
+  const weekDone = countThisWeekPrimContact(activities);
+  $$('#weeklyDone').textContent = String(weekDone);
+
+  // render
+  if (!$$('#view-today').classList.contains('hidden')){
+    renderTasksTable(tasks, companiesMap);
+  }
+  if (!$$('#view-companies').classList.contains('hidden')){
+    renderCompaniesTable(companies, contacts);
+  }
+  if (!$$('#view-events').classList.contains('hidden')){
+    renderEventsTable(events);
+  }
+
+if (!$$('#view-reports').classList.contains('hidden')){
+  await renderContractsReport();
+  await renderEventsReport();
+  await renderEventPipelineReport();
+}
+
+  // counts
+  $$('#companiesCount').textContent = String(companies.length);
+
+  // "need follow-up": companies with open overdue tasks
+  const needs = new Set(overdue.map(t=>t.companyId));
+  $$('#companiesNeedFollowup').textContent = String(needs.size);
+
+  // attach table click handlers
+  bindDynamicHandlers();
+}
+
+function countThisWeekPrimContact(activities){
+  const now = new Date();
+  const day = now.getDay(); // 0 Sun
+  const diff = (day === 0 ? 6 : day - 1); // monday start
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - diff);
+  monday.setHours(0,0,0,0);
+
+  return activities.filter(a => a.type === 'Prim Contact (email/call/other)' && a.dateTime && new Date(a.dateTime) >= monday).length;
+}
+
+function bindDynamicHandlers(){
+  // open company from any link/button
+  $$$('[data-open-company]').forEach(el=>{
+    el.onclick = (e)=>{
+      e.preventDefault();
+      const id = el.getAttribute('data-open-company');
+      openCompanyModal(id);
+    };
+  });
+
+  // task done/snooze in Today table
+  $$$('[data-done-task]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      await markTaskDone(btn.getAttribute('data-done-task'));
+      toast('Task done');
+      refreshAll();
+    };
+  });
+  $$$('[data-snooze-task]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const id = btn.getAttribute('data-snooze-task');
+      const t = await idbGet(STORES.tasks, id);
+      if (!t) return;
+      const newDue = prompt('New due date (YYYY-MM-DD):', t.dueDate);
+      if (!newDue) return;
+      await snoozeTask(id, newDue);
+      toast('Task snoozed');
+      refreshAll();
+    };
+  });
+
+$$$('[data-del-task]').forEach(btn=>{
+  btn.onclick = async ()=>{
+    const id = btn.getAttribute('data-del-task');
+
+    const t = await idbGet(STORES.tasks, id);
+    if (!t) return;
+
+    // optional reason
+    let reason = prompt('Reason for deleting this task? (optional)', '');
+    if (reason === null) reason = ''; // user pressed Cancel -> treat as empty
+    reason = String(reason || '').trim();
+
+    if (!confirm('Delete this task? You will have a short Undo window.')) return;
+
+    // snapshot for undo
+    __undoTaskSnapshot = JSON.parse(JSON.stringify(t));
+    if (__undoTaskTimer) clearTimeout(__undoTaskTimer);
+
+    // soft delete
+    t.isDeleted = true;
+    t.deletedAt = nowIso();
+    t.deletedReason = reason;
+    t.updatedAt = nowIso();
+    await idbPut(STORES.tasks, t);
+
+    toast(
+      'Task deleted',
+      'Undo',
+      async ()=>{
+        if (!__undoTaskSnapshot) return;
+        const restore = __undoTaskSnapshot;
+        restore.isDeleted = false;
+        restore.deletedAt = '';
+        restore.deletedReason = '';
+        restore.updatedAt = nowIso();
+        await idbPut(STORES.tasks, restore);
+        __undoTaskSnapshot = null;
+        toast('Task restored');
+        refreshAll();
+      },
+      6500
+    );
+
+    __undoTaskTimer = setTimeout(()=>{ __undoTaskSnapshot = null; }, 6500);
+
+    refreshAll();
+  };
+});
+
+  // Prim Contact: create next +10d
+  $$$('[data-next-prim]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const id = btn.getAttribute('data-next-prim');
+      const res = await createSecondPrimContactTaskFromFirstTask(id);
+      if (!res.ok){
+        const why = res.reason || 'unknown';
+        toast('Cannot create next: ' + why);
+        return;
+      }
+      const primCadence = await getSetting('primCadence', [5,10]);
+const secondDays = Number(primCadence[1] || 10);
+toast('Created next reminder (+' + secondDays + 'd)');
+      refreshAll();
+    };
+  });
+
+  // events delete
+  $$$('[data-del-event]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      if (!confirm('Delete event?')) return;
+      await idbDelete(STORES.events, btn.getAttribute('data-del-event'));
+      toast('Deleted event');
+      refreshAll();
+    };
+  });
+}
+
+/* ==========================================================
+   [ANCHOR:BUTTON_WIRING]
+   ========================================================== */
+$$('#btnQuickAddCompany').onclick = async ()=>{
+  const name = prompt('Company name:');
+  if (!name) return;
+  const c = {
+    id: uid(),
+    name: name.trim(),
+    introducedBy: '',
+    pipelineStatus: 'Prospect',
+    priority: '',
+    contributionType: '',
+    estimatedValueEUR: '',
+    eventId: '',
+    nextStepText: '',
+    notes: '',
+    rawStatusText: '',
+    legacyFlags: {},
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  };
+  await idbAdd(STORES.companies, c);
+  toast('Company added');
+  showTab('companies');
+  refreshAll();
+  openCompanyModal(c.id);
+};
+
+$$('#btnImport').onclick = async ()=>{
+  const file = $$('#importFile').files[0];
+  if (!file){
+    alert('Choose a CSV file first.');
+    return;
+  }
+  const mode = $$('#importMode').value;
+  if (mode === 'replace'){
+    if (!confirm('REPLACE will delete all current data. Continue?')) return;
+  }
+  const text = await file.text();
+  const parsed = parseCsv(text);
+  if (!parsed.data.length){
+    alert('No data rows found in CSV.');
+    return;
+  }
+  try{
+    const res = await importCsvRows(parsed.data, mode);
+    $$('#importResult').textContent = `Import OK. Companies added: ${res.companiesAdded}, updated: ${res.companiesUpdated}, contacts added: ${res.contactsAdded}.`;
+    toast('Import complete');
+    refreshAll();
+    showTab('companies');
+  } catch(err){
+    console.error(err);
+    alert('Import failed: ' + (err.message || err));
+  }
+};
+
+const legacyBtn = $$('#btnCreateLegacyTasks');
+if (legacyBtn){
+  legacyBtn.onclick = async ()=>{
+    try{
+      legacyBtn.disabled = true;
+
+      const res = await bulkCreateInitialTasksFromLegacyFlags();
+      const msg = `Done. Created: ${res.created}. Skipped (already had tasks): ${res.skippedExisting}. Skipped (no flags): ${res.skippedNoFlags}. Total companies: ${res.totalCompanies}.`;
+      const out = $$('#legacyTasksResult');
+      if (out) out.textContent = msg;
+
+      toast('Initial tasks created');
+      await refreshAll();
+      showTab('today');
+    } catch (err){
+      console.error(err);
+      alert('Failed: ' + (err.message || err));
+    } finally{
+      legacyBtn.disabled = false;
+    }
+  };
+}
+
+$$('#btnBackupJson').onclick = backupJson;
+$$('#btnBackupJson2').onclick = backupJson;
+
+async function backupJson(){
+  const payload = {
+    exportedAt: nowIso(),
+    companies: await idbGetAll(STORES.companies),
+    contacts: await idbGetAll(STORES.contacts),
+    activities: await idbGetAll(STORES.activities),
+    tasks: await idbGetAll(STORES.tasks),
+    events: await idbGetAll(STORES.events),
+    settings: await idbGetAll(STORES.settings),
+    attachments: await idbGetAll(STORES.attachments)
+  };
+  downloadText('fundraising_backup.json', JSON.stringify(payload, null, 2), 'application/json;charset=utf-8');
+}
+
+// Micro-upgrade: single ICS export based on Today filter
+const btnIcsFiltered = $$('#btnExportIcsFiltered');
+if (btnIcsFiltered){
+  btnIcsFiltered.onclick = async ()=>{
+    const tasks = await idbGetAll(STORES.tasks);
+
+    const today = new Date();
+    const todayISO = toDateOnlyISO(today);
+
+    const end = new Date(today);
+    end.setDate(end.getDate() + 7);
+    const endISO = toDateOnlyISO(end);
+
+    // read Today filter (default to 'all' if missing)
+    const filterEl = $$('#taskFilter');
+    const filter = filterEl ? filterEl.value : 'all';
+
+    let selected = tasks.filter(t => t.status === TASK_STATUS.OPEN && !t.isDeleted);
+
+    if (filter === 'today'){
+      selected = selected.filter(t => t.dueDate === todayISO);
+    } else if (filter === 'overdue'){
+      selected = selected.filter(t => t.dueDate < todayISO);
+    } else if (filter === 'week'){
+      selected = selected.filter(t => t.dueDate >= todayISO && t.dueDate <= endISO);
+    } // else 'all' -> keep as is
+
+    if (!selected.length){
+      const msg =
+        (filter === 'today') ? 'No open tasks due today.' :
+        (filter === 'overdue') ? 'No overdue open tasks.' :
+        (filter === 'week') ? 'No open tasks in the next 7 days.' :
+        'No open tasks.';
+      alert(msg);
+      return;
+    }
+
+    const label =
+      (filter === 'today') ? `today_${todayISO}` :
+      (filter === 'overdue') ? `overdue_asof_${todayISO}` :
+      (filter === 'week') ? `next7days_${todayISO}_to_${endISO}` :
+      `all_open_${todayISO}`;
+
+    await exportIcsForTasks(selected, `reminders_${label}.ics`);
+  };
+}
+
+$$('#btnMarkAllDueTodayDone').onclick = async ()=>{
+  const tasks = await idbGetAll(STORES.tasks);
+  const todayISO = toDateOnlyISO(new Date());
+  const dueToday = tasks.filter(t=>t.status===TASK_STATUS.OPEN && !t.isDeleted && t.dueDate===todayISO);
+  if (!dueToday.length){ toast('Nothing due today'); return; }
+  if (!confirm('Mark ALL tasks due today as Done?')) return;
+  for (const t of dueToday) await markTaskDone(t.id);
+  toast('Marked done');
+  refreshAll();
+};
+
+$$('#taskSearch').addEventListener('input', ()=> refreshAll());
+$$('#taskFilter').addEventListener('change', ()=> refreshAll());
+$$('#companySearch').addEventListener('input', ()=> refreshAll());
+$$('#companyStatusFilter').addEventListener('change', ()=> refreshAll());
+$$('#companyPriorityFilter').addEventListener('change', ()=> refreshAll());
+
+$$('#btnAddEvent').onclick = async ()=>{
+  const name = prompt('Event name:');
+  if (!name) return;
+  const start = prompt('Start date (YYYY-MM-DD):', toDateOnlyISO(new Date()));
+  if (!start) return;
+  const end = prompt('End date (optional YYYY-MM-DD):', '');
+  const e = {
+    id: uid(),
+    name: name.trim(),
+    startDate: start,
+    endDate: (end || '').trim(),
+    defaultReminderOffsetsDays: [60,30,14,7],
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  };
+  await idbAdd(STORES.events, e);
+  toast('Event added');
+  refreshAll();
+};
+
+// Reports (MVP)
+$$('#btnRunNoReply').onclick = async ()=>{
+  const days = Number($$('#noReplyDays').value || 7);
+  const companies = await idbGetAll(STORES.companies);
+  const acts = await idbGetAll(STORES.activities);
+
+  const lastOutreachByCompany = new Map();
+  for (const a of acts){
+    // outreach types: prim contact, email sent, call, meeting, contract sent
+    const isOutreach = ['Prim Contact (email/call/other)','Email sent','Call','Meeting','Contract sent'].includes(a.type);
+    if (!isOutreach) continue;
+    const prev = lastOutreachByCompany.get(a.companyId);
+    if (!prev || (a.dateTime || '') > (prev.dateTime || '')) lastOutreachByCompany.set(a.companyId, a);
+  }
+
+  const now = new Date();
+  const threshold = new Date(now);
+  threshold.setDate(threshold.getDate() - days);
+
+  const rows = [];
+  for (const c of companies){
+    const last = lastOutreachByCompany.get(c.id);
+    if (!last) continue;
+    const dt = new Date(last.dateTime);
+    if (dt < threshold){
+      rows.push({
+        company: c.name,
+        status: c.pipelineStatus,
+        lastOutreach: last.dateTime ? last.dateTime.slice(0,10) : '',
+        type: last.type,
+        introducedBy: c.introducedBy || ''
+      });
+    }
+  }
+  rows.sort((a,b)=> (a.lastOutreach||'').localeCompare(b.lastOutreach||''));
+  if (!rows.length){
+    $$('#reportNoReply').innerHTML = '<div class="muted">No companies above threshold.</div>';
+    return;
+  }
+  const html = ['<table class="table"><thead><tr><th>Company</th><th>Status</th><th>Last outreach</th><th>Type</th><th>Introduced by</th></tr></thead><tbody>'];
+  for (const r of rows){
+    html.push(`<tr>
+      <td>${escapeHtml(r.company)}</td>
+      <td><span class="chip">${escapeHtml(r.status)}</span></td>
+      <td>${escapeHtml(r.lastOutreach)}</td>
+      <td class="muted">${escapeHtml(r.type)}</td>
+      <td class="muted">${escapeHtml(r.introducedBy)}</td>
+    </tr>`);
+  }
+  html.push('</tbody></table>');
+  $$('#reportNoReply').innerHTML = html.join('');
+};
+
+async function renderContractsReport(){
+  const acts = await idbGetAll(STORES.activities);
+
+  const signed = acts.filter(a => a.type === 'Contract signed');
+  if (!signed.length){
+    $$('#reportContracts').innerHTML = '<div class="muted">No "Contract signed" activities yet.</div>';
+    return;
+  }
+
+  const buckets = {
+    'Sponsorizare': {count:0, sum:0},
+    'Prestari servicii': {count:0, sum:0},
+    '(blank)': {count:0, sum:0}
+  };
+
+  for (const a of signed){
+    const k = a.contractType || '(blank)';
+    const amt = Number(String(a.amountEUR || '').replace(',', '.')) || 0;
+    if (!buckets[k]) buckets[k] = {count:0, sum:0};
+    buckets[k].count += 1;
+    buckets[k].sum += amt;
+  }
+
+  const rows = Object.entries(buckets)
+    .filter(([_,v]) => v.count > 0)
+    .map(([k,v]) => ({type:k, count:v.count, sum:v.sum}));
+
+  const html = [];
+  html.push('<table class="table"><thead><tr><th>Contract type</th><th>Count</th><th>Sum EUR (optional)</th></tr></thead><tbody>');
+  for (const r of rows){
+    html.push(`<tr>
+      <td>${escapeHtml(r.type)}</td>
+      <td>${escapeHtml(String(r.count))}</td>
+      <td class="muted">${escapeHtml(r.sum ? r.sum.toFixed(2) : '-')}</td>
+    </tr>`);
+  }
+  html.push('</tbody></table>');
+  $$('#reportContracts').innerHTML = html.join('');
+}
+
+const btnExpEv = $$('#btnExportEventReportCsv');
+if (btnExpEv){
+  btnExpEv.onclick = async ()=>{
+    if (!window.__lastEventReportRows) await renderEventsReport();
+    const rows = window.__lastEventReportRows || [];
+    const headers = ['eventName','startDate','linkedCount','contractsCount','conversionPct','estimatedSum','closedSum'];
+    const flat = rows.map(r=>({
+      eventName: r.eventName,
+      startDate: r.startDate,
+      linkedCount: r.linkedCount,
+      contractsCount: r.contractsCount,
+      conversionPct: Number(r.conversionPct.toFixed(1)),
+      estimatedSum: Number((r.estimatedSum||0).toFixed(2)),
+      closedSum: Number((r.closedSum||0).toFixed(2))
+    }));
+    downloadText('report_events.csv', toCsv(flat, headers), 'text/csv;charset=utf-8');
+  };
+}
+
+const btnExpEvPipe = $$('#btnExportEventPipelineCsv');
+if (btnExpEvPipe){
+  btnExpEvPipe.onclick = async ()=>{
+    if (!window.__lastEventPipelineRows) await renderEventPipelineReport();
+    const rows = window.__lastEventPipelineRows || [];
+
+    const headers = [
+      'eventName','startDate','linkedTotal',
+      'Prospect','Contactat','In discutii','Propunere trimisa','Negociere','Castigat','Pierdut','Nurture',
+      'activeConversionPct','winRatePct'
+    ];
+
+    const flat = rows.map(r=>({
+      eventName: r.eventName,
+      startDate: r.startDate,
+      linkedTotal: r.linkedTotal,
+      Prospect: r.Prospect,
+      Contactat: r.Contactat,
+      'In discutii': r['In discutii'],
+      'Propunere trimisa': r['Propunere trimisa'],
+      Negociere: r.Negociere,
+      Castigat: r.Castigat,
+      Pierdut: r.Pierdut,
+      Nurture: r.Nurture,
+      activeConversionPct: Number(r.activeConversionPct.toFixed(1)),
+      winRatePct: Number(r.winRatePct.toFixed(1))
+    }));
+
+    downloadText('report_event_pipeline.csv', toCsv(flat, headers), 'text/csv;charset=utf-8');
+  };
+}
+
+async function renderEventPipelineReport(){
+  const events = await idbGetAll(STORES.events);
+  const companies = await idbGetAll(STORES.companies);
+
+  if (!events.length){
+    $$('#reportEventPipeline').innerHTML = '<div class="muted">No events yet.</div>';
+    window.__lastEventPipelineRows = [];
+    return;
+  }
+
+  const STAGES = ['Prospect','Contactat','In discutii','Propunere trimisa','Negociere','Castigat','Pierdut','Nurture'];
+
+  const rows = [];
+  for (const e of events){
+    const linked = companies.filter(c => (c.eventId || '') === e.id);
+    const total = linked.length;
+
+    const counts = Object.fromEntries(STAGES.map(s=>[s,0]));
+    for (const c of linked){
+      const s = c.pipelineStatus || 'Prospect';
+      if (!counts.hasOwnProperty(s)) counts['Prospect'] += 1;
+      else counts[s] += 1;
+    }
+
+    const won = counts['Castigat'] || 0;
+    const active = (counts['In discutii']||0) + (counts['Propunere trimisa']||0) + (counts['Negociere']||0) + (counts['Castigat']||0);
+
+    rows.push({
+      eventName: e.name,
+      startDate: e.startDate || '',
+      linkedTotal: total,
+      Prospect: counts['Prospect'],
+      Contactat: counts['Contactat'],
+      'In discutii': counts['In discutii'],
+      'Propunere trimisa': counts['Propunere trimisa'],
+      Negociere: counts['Negociere'],
+      Castigat: counts['Castigat'],
+      Pierdut: counts['Pierdut'],
+      Nurture: counts['Nurture'],
+      activeConversionPct: total ? (active/total*100) : 0,
+      winRatePct: total ? (won/total*100) : 0
+    });
+  }
+
+  rows.sort((a,b)=> (a.startDate||'').localeCompare(b.startDate||'') || (b.linkedTotal - a.linkedTotal));
+
+  const html = [];
+  html.push('<table class="table"><thead><tr>');
+  html.push('<th>Event</th><th>Start</th><th>Total</th>');
+  html.push('<th>Prospect</th><th>Contactat</th><th>In discutii</th><th>Propunere</th><th>Negociere</th><th>Castigat</th><th>Pierdut</th><th>Nurture</th>');
+  html.push('<th>Active conv.</th><th>Win rate</th>');
+  html.push('</tr></thead><tbody>');
+
+  for (const r of rows){
+    html.push(`<tr>
+      <td>${escapeHtml(r.eventName)}</td>
+      <td class="muted">${escapeHtml(r.startDate)}</td>
+      <td>${escapeHtml(String(r.linkedTotal))}</td>
+      <td>${escapeHtml(String(r.Prospect))}</td>
+      <td>${escapeHtml(String(r.Contactat))}</td>
+      <td>${escapeHtml(String(r['In discutii']))}</td>
+      <td>${escapeHtml(String(r['Propunere trimisa']))}</td>
+      <td>${escapeHtml(String(r.Negociere))}</td>
+      <td>${escapeHtml(String(r.Castigat))}</td>
+      <td>${escapeHtml(String(r.Pierdut))}</td>
+      <td>${escapeHtml(String(r.Nurture))}</td>
+      <td class="muted">${escapeHtml(r.activeConversionPct.toFixed(1) + '%')}</td>
+      <td class="muted">${escapeHtml(r.winRatePct.toFixed(1) + '%')}</td>
+    </tr>`);
+  }
+
+  html.push('</tbody></table>');
+  $$('#reportEventPipeline').innerHTML = html.join('');
+
+  window.__lastEventPipelineRows = rows;
+}
+
+async function renderEventsReport(){
+  const events = await idbGetAll(STORES.events);
+  const companies = await idbGetAll(STORES.companies);
+  const acts = await idbGetAll(STORES.activities);
+
+  if (!events.length){
+    $$('#reportEvents').innerHTML = '<div class="muted">No events yet.</div>';
+    return;
+  }
+
+  // Map contract signed amounts by company
+  const signedActs = acts.filter(a => a.type === 'Contract signed');
+  const signedByCompany = new Map(); // companyId -> {count, sum}
+  for (const a of signedActs){
+    const amt = Number(String(a.amountEUR || '').replace(',', '.')) || 0;
+    const prev = signedByCompany.get(a.companyId) || {count:0, sum:0};
+    prev.count += 1;
+    prev.sum += amt;
+    signedByCompany.set(a.companyId, prev);
+  }
+
+  // Build rows per event
+  const rows = [];
+  for (const e of events){
+    const linked = companies.filter(c => (c.eventId || '') === e.id);
+    const linkedCount = linked.length;
+
+    let contractsCount = 0;
+    let closedSum = 0;
+    let estimatedSum = 0;
+
+    for (const c of linked){
+      const est = Number(String(c.estimatedValueEUR || '').replace(',', '.')) || 0;
+      estimatedSum += est;
+
+      const s = signedByCompany.get(c.id);
+      if (s){
+        contractsCount += s.count;     // if you sign multiple contracts per company, this counts them
+        closedSum += s.sum;
+      }
+    }
+
+    const conversion = linkedCount ? (contractsCount / linkedCount) : 0;
+
+    rows.push({
+      eventName: e.name,
+      startDate: e.startDate || '',
+      linkedCount,
+      contractsCount,
+      conversionPct: (conversion*100),
+      estimatedSum,
+      closedSum
+    });
+  }
+
+  rows.sort((a,b)=> (a.startDate||'').localeCompare(b.startDate||'') || (b.closedSum - a.closedSum));
+
+  const html = [];
+  html.push('<table class="table"><thead><tr>');
+  html.push('<th>Event</th><th>Start</th><th>Linked companies</th><th>Contracts signed</th><th>Conversion</th><th>Estimated EUR</th><th>Closed EUR</th>');
+  html.push('</tr></thead><tbody>');
+  for (const r of rows){
+    html.push(`<tr>
+      <td>${escapeHtml(r.eventName)}</td>
+      <td class="muted">${escapeHtml(r.startDate)}</td>
+      <td>${escapeHtml(String(r.linkedCount))}</td>
+      <td>${escapeHtml(String(r.contractsCount))}</td>
+      <td class="muted">${escapeHtml(r.conversionPct.toFixed(1) + '%')}</td>
+      <td class="muted">${escapeHtml(r.estimatedSum ? r.estimatedSum.toFixed(2) : '-')}</td>
+      <td class="muted">${escapeHtml(r.closedSum ? r.closedSum.toFixed(2) : '-')}</td>
+    </tr>`);
+  }
+  html.push('</tbody></table>');
+  $$('#reportEvents').innerHTML = html.join('');
+
+  // store last computed for CSV export
+  window.__lastEventReportRows = rows;
+}
+
+// Settings save
+$$('#btnSaveSettings').onclick = async ()=>{
+  const primRaw = safeStr($$('#setPrimCadence').value);
+  const parts = primRaw.split(',').map(x=>Number(x.trim())).filter(x=>Number.isFinite(x) && x>0);
+  await setSetting('primCadence', parts.length ? parts : [5,10]);
+  await setSetting('followUpDefaultDays', Number($$('#setFollowUpDefault').value || 7));
+  await setSetting('noReplyDays', Number($$('#setNoReply').value || 3));
+  await setSetting('lostReentryDays', Number($$('#setLostReentry').value || 90));
+  await setSetting('weeklyTarget', Number($$('#setWeeklyTarget').value || 10));
+  await setSetting('icsHour', Number($$('#setIcsHour').value || 10));
+  await setSetting('icsMinute', Number($$('#setIcsMinute').value || 0));
+  $$('#settingsSavedMsg').textContent = 'Saved.';
+  toast('Settings saved');
+  refreshAll();
+};
+
+// Danger nuke
+$$('#btnNukeDb').onclick = async ()=>{
+  if (!confirm('DELETE ALL data from this browser? This cannot be undone.')) return;
+  await replaceAllData();
+  toast('All data deleted');
+  refreshAll();
+};
+
+// Exports
+$$('#btnExportCompaniesCsv').onclick = async ()=>{
+  const companies = await idbGetAll(STORES.companies);
+  const events = await idbGetAll(STORES.events);
+  const evMap = new Map(events.map(e => [e.id, e.name]));
+
+  const headers = ['name','pipelineStatus','priority','introducedBy','contributionType','estimatedValueEUR','eventName','nextStepText','notes','rawStatusText','createdAt','updatedAt'];
+
+  const rows = companies.map(c=>({
+    name: c.name,
+    pipelineStatus: c.pipelineStatus,
+    priority: c.priority,
+    introducedBy: c.introducedBy,
+    contributionType: c.contributionType,
+    estimatedValueEUR: c.estimatedValueEUR,
+    eventName: evMap.get(c.eventId || '') || '',
+    nextStepText: c.nextStepText,
+    notes: c.notes,
+    rawStatusText: c.rawStatusText,
+    createdAt: c.createdAt,
+    updatedAt: c.updatedAt
+  }));
+
+  downloadText('companies.csv', toCsv(rows, headers), 'text/csv;charset=utf-8');
+};
+
+$$('#btnExportContactsCsv').onclick = async ()=>{
+  const contacts = await idbGetAll(STORES.contacts);
+  const companies = await idbGetAll(STORES.companies);
+  const cmap = new Map(companies.map(c=>[c.id,c.name]));
+  const headers = ['company','fullName','roleText','email','phone','notes','createdAt','updatedAt'];
+  const rows = contacts.map(c=>({
+    company: cmap.get(c.companyId) || '',
+    fullName: c.fullName, roleText:c.roleText, email:c.email, phone:c.phone, notes:c.notes, createdAt:c.createdAt, updatedAt:c.updatedAt
+  }));
+  downloadText('contacts.csv', toCsv(rows, headers), 'text/csv;charset=utf-8');
+};
+
+$$('#btnExportActivitiesCsv').onclick = async ()=>{
+  const acts = await idbGetAll(STORES.activities);
+  const companies = await idbGetAll(STORES.companies);
+  const cmap = new Map(companies.map(c=>[c.id,c.name]));
+
+  const headers = [
+    'company','type','dateTime','outcome',
+    'contractType','amountEUR',
+    'attachmentCount',
+    'notes',
+    'createFollowUp','followUpDueDate',
+    'createdAt','updatedAt'
+  ];
+
+  const rows = acts.map(a=>({
+    company: cmap.get(a.companyId) || '',
+    type: a.type,
+    dateTime: a.dateTime,
+    outcome: a.outcome,
+    contractType: a.contractType || '',
+    amountEUR: a.amountEUR || '',
+    attachmentCount: Array.isArray(a.attachmentIds) ? a.attachmentIds.length : 0,
+    notes: a.notes,
+    createFollowUp: a.createFollowUp ? 'true':'false',
+    followUpDueDate: a.followUpDueDate || '',
+    createdAt: a.createdAt || '',
+    updatedAt: a.updatedAt || ''
+  }));
+
+  downloadText('activities.csv', toCsv(rows, headers), 'text/csv;charset=utf-8');
+};
+
+$$('#btnExportTasksCsv').onclick = async ()=>{
+  const tasks = await idbGetAll(STORES.tasks);
+  const companies = await idbGetAll(STORES.companies);
+  const cmap = new Map(companies.map(c=>[c.id,c.name]));
+  const headers = ['company','taskType','dueDate','status','notes','ruleSource','createdAt','updatedAt'];
+  const rows = tasks.map(t=>({
+    company: cmap.get(t.companyId) || '',
+    taskType:t.taskType, dueDate:t.dueDate, status:t.status, notes:t.notes, ruleSource:t.ruleSource,
+    createdAt:t.createdAt, updatedAt:t.updatedAt
+  }));
+  downloadText('tasks.csv', toCsv(rows, headers), 'text/csv;charset=utf-8');
+};
+
+$$('#btnExportCompaniesXls').onclick = async ()=>{
+  const companies = await idbGetAll(STORES.companies);
+  const events = await idbGetAll(STORES.events);
+  const evMap = new Map(events.map(e => [e.id, e.name]));
+
+  const headers = ['name','pipelineStatus','priority','introducedBy','contributionType','estimatedValueEUR','eventName','nextStepText','notes'];
+
+  const rows = companies.map(c=>({
+    name: c.name,
+    pipelineStatus: c.pipelineStatus,
+    priority: c.priority,
+    introducedBy: c.introducedBy,
+    contributionType: c.contributionType,
+    estimatedValueEUR: c.estimatedValueEUR,
+    eventName: evMap.get(c.eventId || '') || '',
+    nextStepText: c.nextStepText,
+    notes: c.notes
+  }));
+
+  downloadText('companies.xls', toXlsHtml('Companies', rows, headers), 'application/vnd.ms-excel;charset=utf-8');
+};
+
+$$('#btnExportContactsXls').onclick = async ()=>{
+  const contacts = await idbGetAll(STORES.contacts);
+  const companies = await idbGetAll(STORES.companies);
+  const cmap = new Map(companies.map(c=>[c.id,c.name]));
+  const headers = ['company','fullName','roleText','email','phone','notes'];
+  const rows = contacts.map(c=>({
+    company: cmap.get(c.companyId)||'',
+    fullName:c.fullName, roleText:c.roleText, email:c.email, phone:c.phone, notes:c.notes
+  }));
+  downloadText('contacts.xls', toXlsHtml('Contacts', rows, headers), 'application/vnd.ms-excel;charset=utf-8');
+};
+
+/* ==========================================================
+   [ANCHOR:BOOT]
+   ========================================================== */
+(async function init(){
+  db = await openDb();
+  await ensureDefaults();
+
+  // load settings into UI
+  const prim = await getSetting('primCadence', [5,10]);
+  $$('#setPrimCadence').value = (prim || [5,10]).join(',');
+  $$('#setFollowUpDefault').value = await getSetting('followUpDefaultDays', 7);
+  $$('#setNoReply').value = await getSetting('noReplyDays', 3);
+  $$('#setLostReentry').value = await getSetting('lostReentryDays', 90);
+  $$('#setWeeklyTarget').value = await getSetting('weeklyTarget', 10);
+  $$('#setIcsHour').value = await getSetting('icsHour', 10);
+  $$('#setIcsMinute').value = await getSetting('icsMinute', 0);
+
+  refreshAll();
+})();
+</script>
+</body>
+</html>
