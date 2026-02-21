@@ -1,11 +1,68 @@
 <!DOCTYPE html>
-<html>
+<html lang="ro">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="refresh" content="0; url=/alex/">
-<title>Redirecting...</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AlexHub</title>
+<style>
+body {
+    margin:0;
+    font-family: Arial, sans-serif;
+    background:#0f172a;
+    color:white;
+    text-align:center;
+}
+
+h1 {
+    margin-top:40px;
+}
+
+.container {
+    display:flex;
+    flex-direction:column;
+    gap:20px;
+    padding:30px;
+    max-width:500px;
+    margin:auto;
+}
+
+.card {
+    background:#1e293b;
+    padding:25px;
+    border-radius:12px;
+    text-decoration:none;
+    color:white;
+    font-size:20px;
+    font-weight:bold;
+    transition:0.2s;
+}
+
+.card:hover {
+    background:#334155;
+    transform:scale(1.03);
+}
+</style>
 </head>
+
 <body>
-Redirecting to Alex Hub...
+
+<h1>Alex Hub</h1>
+
+<div class="container">
+
+<a class="card" href="/alex/procurement/">
+Procurement Tool
+</a>
+
+<a class="card" href="#">
+Fundraising Tool (coming soon)
+</a>
+
+<a class="card" href="#">
+Random Tool
+</a>
+
+</div>
+
 </body>
 </html>
