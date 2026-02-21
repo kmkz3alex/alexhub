@@ -1,68 +1,583 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ro">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AlexHub</title>
-<style>
-body {
-    margin:0;
-    font-family: Arial, sans-serif;
-    background:#0f172a;
-    color:white;
-    text-align:center;
-}
-
-h1 {
-    margin-top:40px;
-}
-
-.container {
-    display:flex;
-    flex-direction:column;
-    gap:20px;
-    padding:30px;
-    max-width:500px;
-    margin:auto;
-}
-
-.card {
-    background:#1e293b;
-    padding:25px;
-    border-radius:12px;
-    text-decoration:none;
-    color:white;
-    font-size:20px;
-    font-weight:bold;
-    transition:0.2s;
-}
-
-.card:hover {
-    background:#334155;
-    transform:scale(1.03);
-}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AlexHub</title>
+  <meta name="description" content="Hub privat pentru tool-urile tale (Procurement / Fundraising) — protejat cu Cloudflare Access." />
+  <style>
+    :root{
+      --bg: #0b1220;
+      --panel: rgba(255,255,255,0.06);
+      --panel2: rgba(255,255,255,0.08);
+      --text: rgba(255,255,255,0.92);
+      --muted: rgba(255,255,255,0.65);
+      --muted2: rgba(255,255,255,0.45);
+      --stroke: rgba(255,255,255,0.10);
+      --good: #2dd4bf;
+      --warn: #fbbf24;
+      --blue: #60a5fa;
+      --pink: #f472b6;
+      --shadow: 0 18px 60px rgba(0,0,0,0.45);
+      --radius: 18px;
+      --radius2: 24px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Helvetica Neue", sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(900px 600px at 15% 10%, rgba(96,165,250,0.18), transparent 55%),
+        radial-gradient(800px 520px at 85% 20%, rgba(244,114,182,0.14), transparent 55%),
+        radial-gradient(900px 600px at 60% 90%, rgba(45,212,191,0.10), transparent 60%),
+        linear-gradient(180deg, #070b14 0%, var(--bg) 100%);
+      overflow-x:hidden;
+    }
+    a{color:inherit; text-decoration:none}
+    .wrap{
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 28px 18px 64px;
+    }
+    header{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:14px;
+      padding: 8px 2px 18px;
+    }
+    .brand{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+    .brand-top{
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .logo{
+      width:38px;height:38px;border-radius:12px;
+      background: linear-gradient(135deg, rgba(96,165,250,0.95), rgba(244,114,182,0.85));
+      box-shadow: 0 10px 30px rgba(96,165,250,0.18);
+      position:relative;
+      overflow:hidden;
+    }
+    .logo:after{
+      content:"";
+      position:absolute; inset:-40%;
+      background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.55), transparent 45%);
+      transform: rotate(25deg);
+    }
+    h1{
+      margin:0;
+      font-size: 22px;
+      letter-spacing: 0.2px;
+    }
+    .subtitle{
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+      max-width: 620px;
+    }
+    .right-actions{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      align-items:flex-end;
+      min-width: 280px;
+    }
+    .pillrow{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+    .pill{
+      font-size:12px;
+      padding:7px 10px;
+      border:1px solid var(--stroke);
+      background: rgba(255,255,255,0.04);
+      border-radius: 999px;
+      color: var(--muted);
+      display:flex;
+      align-items:center;
+      gap:8px;
+      user-select:none;
+    }
+    .dot{
+      width:8px;height:8px;border-radius:999px;
+      background: var(--good);
+      box-shadow: 0 0 0 4px rgba(45,212,191,0.12);
+    }
+    .search{
+      width:100%;
+      position:relative;
+    }
+    .search input{
+      width:100%;
+      padding: 12px 42px 12px 40px;
+      border-radius: 14px;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      outline:none;
+      font-size: 14px;
+      transition: 150ms ease;
+    }
+    .search input:focus{
+      border-color: rgba(96,165,250,0.45);
+      box-shadow: 0 0 0 4px rgba(96,165,250,0.10);
+    }
+    .search .icon{
+      position:absolute;
+      top:50%;
+      transform: translateY(-50%);
+      left:14px;
+      opacity:0.75;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .search .clear{
+      position:absolute;
+      top:50%;
+      transform: translateY(-50%);
+      right:10px;
+      padding:6px 10px;
+      border-radius: 12px;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.05);
+      color: var(--muted);
+      cursor:pointer;
+      font-size:12px;
+      display:none;
+    }
+    .search .clear:hover{background: rgba(255,255,255,0.08)}
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap:14px;
+      margin-top: 10px;
+    }
+    .card{
+      border: 1px solid var(--stroke);
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+      border-radius: var(--radius2);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+      position:relative;
+      transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+    }
+    .card:hover{
+      transform: translateY(-2px);
+      border-color: rgba(255,255,255,0.16);
+      background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.035));
+    }
+    .card .inner{
+      padding: 16px 16px 14px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .card .top{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .card .title{
+      font-size: 16px;
+      font-weight: 700;
+      margin:0;
+      letter-spacing: 0.2px;
+    }
+    .card .desc{
+      margin:0;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+    .badge{
+      font-size: 11px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.04);
+      color: var(--muted);
+      white-space:nowrap;
+    }
+    .btnrow{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top: 4px;
+    }
+    .btn{
+      flex:1;
+      min-width: 160px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+      padding: 12px 12px;
+      border-radius: 16px;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.05);
+      cursor:pointer;
+      font-weight: 650;
+      font-size: 14px;
+      transition: 140ms ease;
+      user-select:none;
+    }
+    .btn:hover{background: rgba(255,255,255,0.08)}
+    .btn.primary{
+      border-color: rgba(96,165,250,0.40);
+      background: linear-gradient(135deg, rgba(96,165,250,0.18), rgba(96,165,250,0.08));
+    }
+    .btn.primary:hover{border-color: rgba(96,165,250,0.60)}
+    .btn.accent{
+      border-color: rgba(244,114,182,0.40);
+      background: linear-gradient(135deg, rgba(244,114,182,0.18), rgba(244,114,182,0.07));
+    }
+    .btn.accent:hover{border-color: rgba(244,114,182,0.60)}
+    .btn.small{
+      padding: 10px 12px;
+      border-radius: 14px;
+      font-weight: 600;
+      font-size: 13px;
+      min-width: 140px;
+    }
+    .mini{
+      font-size: 12px;
+      color: var(--muted2);
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .divider{
+      height:1px;
+      background: rgba(255,255,255,0.08);
+      margin: 6px 0 0;
+    }
+    .section{
+      grid-column: span 12;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.035);
+      border-radius: var(--radius);
+      padding: 14px 14px;
+    }
+    .section h2{
+      margin:0 0 10px;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 700;
+      letter-spacing: 0.25px;
+      text-transform: uppercase;
+    }
+    .quick{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .linkbtn{
+      display:inline-flex;
+      align-items:center;
+      gap:10px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.04);
+      color: var(--muted);
+      font-size: 13px;
+      cursor:pointer;
+      user-select:none;
+      transition: 140ms ease;
+    }
+    .linkbtn:hover{background: rgba(255,255,255,0.07); color: var(--text)}
+    .toast{
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      background: rgba(20,24,38,0.9);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: rgba(255,255,255,0.92);
+      padding: 10px 12px;
+      border-radius: 14px;
+      font-size: 13px;
+      box-shadow: 0 18px 60px rgba(0,0,0,0.55);
+      display:none;
+      max-width: calc(100% - 28px);
+      z-index: 9999;
+    }
+    .cols-2{grid-column: span 12;}
+    @media (min-width: 820px){
+      .cols-2{grid-column: span 8;}
+      .cols-1{grid-column: span 4;}
+    }
+    .tool-card{grid-column: span 12;}
+    @media (min-width: 820px){
+      .tool-card{grid-column: span 6;}
+    }
+    .muted{color: var(--muted)}
+    .kbd{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 11px;
+      padding: 2px 7px;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.04);
+      border-radius: 8px;
+      color: var(--muted);
+    }
+  </style>
 </head>
-
 <body>
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <div class="brand-top">
+          <div class="logo" aria-hidden="true"></div>
+          <div>
+            <h1>AlexHub</h1>
+            <div class="subtitle">
+              Hub privat pentru tool-urile tale. Acces protejat cu Cloudflare Access (OTP).
+              <span class="muted">Tip:</span> apasa <span class="kbd">/</span> pentru cautare rapida.
+            </div>
+          </div>
+        </div>
+      </div>
 
-<h1>Alex Hub</h1>
+      <div class="right-actions">
+        <div class="pillrow">
+          <div class="pill"><span class="dot" aria-hidden="true"></span> Online</div>
+          <div class="pill">Private</div>
+          <div class="pill" id="pillLast">Last: —</div>
+        </div>
+        <div class="search" role="search">
+          <div class="icon" aria-hidden="true">⌕</div>
+          <input id="q" type="text" placeholder="Cauta tool (procurement, fundraising, ...)" autocomplete="off" />
+          <button id="clear" class="clear" type="button">Clear</button>
+        </div>
+      </div>
+    </header>
 
-<div class="container">
+    <main class="grid" id="grid">
+      <!-- Tools -->
+      <a class="card tool-card" data-tags="procurement achizitii comparatii furnizori po tracking excel" href="/procurement/" data-tool="Procurement">
+        <div class="inner">
+          <div class="top">
+            <div>
+              <p class="title">Procurement Tool</p>
+              <p class="desc">Cereri, oferte, comparatii, PO, tracking, exporturi. (Admin)</p>
+            </div>
+            <span class="badge">/procurement/</span>
+          </div>
+          <div class="btnrow">
+            <span class="btn primary" data-open="/procurement/">Deschide</span>
+            <span class="btn small" data-copy="/procurement/">Copiaza link</span>
+          </div>
+          <div class="mini">Status: <span class="muted">protejat</span> • Recomandat pe desktop</div>
+        </div>
+      </a>
 
-<a class="card" href="/alex/procurement/">
-Procurement Tool
-</a>
+      <a class="card tool-card" data-tags="fundraising crm sponsori pipeline tasks campanii dashboard" href="/fundraising/" data-tool="Fundraising">
+        <div class="inner">
+          <div class="top">
+            <div>
+              <p class="title">Fundraising Tool</p>
+              <p class="desc">Companii, contacte, task-uri, pipeline, note. (Tu + sotie)</p>
+            </div>
+            <span class="badge">/fundraising/</span>
+          </div>
+          <div class="btnrow">
+            <span class="btn accent" data-open="/fundraising/">Deschide</span>
+            <span class="btn small" data-copy="/fundraising/">Copiaza link</span>
+          </div>
+          <div class="mini">Status: <span class="muted">protejat</span> • Mobile friendly</div>
+        </div>
+      </a>
 
-<a class="card" href="#">
-Fundraising Tool (coming soon)
-</a>
+      <!-- Quick actions -->
+      <section class="section cols-2">
+        <h2>Quick actions</h2>
+        <div class="quick">
+          <button class="linkbtn" type="button" data-open="/procurement/" title="Deschide Procurement in tab nou">↗ Procurement (tab nou)</button>
+          <button class="linkbtn" type="button" data-open="/fundraising/" title="Deschide Fundraising in tab nou">↗ Fundraising (tab nou)</button>
+          <button class="linkbtn" type="button" id="openLast" title="Deschide ultimul tool folosit">⟲ Open last</button>
+          <button class="linkbtn" type="button" id="copyHome" title="Copiaza linkul hub-ului">⧉ Copiaza alexhub.ro</button>
+          <button class="linkbtn" type="button" id="logout" title="Logout din Cloudflare Access">⎋ Logout</button>
+        </div>
+        <div class="divider"></div>
+        <div class="mini" style="margin-top:10px">
+          Sugestie: cand adaugi un tool nou, creezi folderul lui in GitHub si pui un card nou aici.
+          Cuvinte cheie pentru search sunt in atributul <span class="kbd">data-tags</span>.
+        </div>
+      </section>
 
-<a class="card" href="#">
-Random Tool
-</a>
+      <!-- Notes / status -->
+      <section class="section cols-1">
+        <h2>Info</h2>
+        <div class="mini">
+          <span>• Sesiune OTP: <span class="muted">24h</span></span><br/>
+          <span>• Sotia: acces doar la <span class="muted">/fundraising/</span></span><br/>
+          <span>• Admin: acces la tot <span class="muted">/</span></span>
+        </div>
+        <div class="divider"></div>
+        <div class="mini" style="margin-top:10px">
+          Daca vrei, pot adauga:
+          <span class="muted">status badges</span> (dev/prod),
+          <span class="muted">favorite tools</span>,
+          sau un mic <span class="muted">changelog</span>.
+        </div>
+      </section>
+    </main>
+  </div>
 
-</div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+  <script>
+    (function(){
+      const $ = (s, el=document) => el.querySelector(s);
+      const $$ = (s, el=document) => Array.from(el.querySelectorAll(s));
+      const toastEl = $("#toast");
+      const q = $("#q");
+      const clearBtn = $("#clear");
+      const pillLast = $("#pillLast");
+      const openLastBtn = $("#openLast");
+
+      const KEY_LAST = "alexhub:lastTool";
+
+      function showToast(msg){
+        toastEl.textContent = msg;
+        toastEl.style.display = "block";
+        clearTimeout(showToast._t);
+        showToast._t = setTimeout(() => toastEl.style.display = "none", 1800);
+      }
+
+      function norm(s){ return (s||"").toLowerCase().trim(); }
+
+      function setLast(toolName, url){
+        const payload = { tool: toolName, url: url, ts: Date.now() };
+        localStorage.setItem(KEY_LAST, JSON.stringify(payload));
+        renderLast();
+      }
+
+      function getLast(){
+        try{ return JSON.parse(localStorage.getItem(KEY_LAST) || "null"); }
+        catch(e){ return null; }
+      }
+
+      function renderLast(){
+        const last = getLast();
+        if(!last || !last.tool){
+          pillLast.textContent = "Last: —";
+          openLastBtn.disabled = true;
+          openLastBtn.style.opacity = 0.6;
+          return;
+        }
+        const whenMin = Math.max(1, Math.round((Date.now() - (last.ts||0)) / 60000));
+        pillLast.textContent = `Last: ${last.tool} (${whenMin} min)`;
+        openLastBtn.disabled = false;
+        openLastBtn.style.opacity = 1;
+      }
+
+      function filterCards(){
+        const term = norm(q.value);
+        clearBtn.style.display = term ? "inline-flex" : "none";
+        const cards = $$(".card.tool-card");
+        cards.forEach(card => {
+          const tags = norm(card.getAttribute("data-tags"));
+          const name = norm(card.getAttribute("data-tool"));
+          const match = !term || tags.includes(term) || name.includes(term);
+          card.style.display = match ? "" : "none";
+        });
+      }
+
+      // Click handlers for buttons inside <a> cards
+      document.addEventListener("click", (e) => {
+        const t = e.target;
+
+        const open = t.closest("[data-open]");
+        if(open){
+          e.preventDefault();
+          e.stopPropagation();
+          const url = open.getAttribute("data-open");
+          // detect tool name from nearest card
+          const card = t.closest("[data-tool]");
+          const toolName = card ? card.getAttribute("data-tool") : "Tool";
+          setLast(toolName, url);
+          window.open(url, "_blank", "noopener");
+          return;
+        }
+
+        const copy = t.closest("[data-copy]");
+        if(copy){
+          e.preventDefault();
+          e.stopPropagation();
+          const path = copy.getAttribute("data-copy");
+          const full = `${location.origin}${path}`;
+          navigator.clipboard.writeText(full).then(() => showToast("Link copiat."), () => showToast("Nu pot copia linkul."));
+          return;
+        }
+      }, { capture:true });
+
+      // Clicking on a card (anchor) should set last tool then navigate
+      $$(".card.tool-card").forEach(card => {
+        card.addEventListener("click", () => {
+          const tool = card.getAttribute("data-tool") || "Tool";
+          const url = card.getAttribute("href") || "/";
+          setLast(tool, url);
+        });
+      });
+
+      // Search
+      q.addEventListener("input", filterCards);
+      clearBtn.addEventListener("click", () => { q.value=""; filterCards(); q.focus(); });
+
+      // Keyboard shortcut: "/" focus search
+      document.addEventListener("keydown", (e) => {
+        if(e.key === "/" && document.activeElement !== q){
+          e.preventDefault();
+          q.focus();
+        }
+        if(e.key === "Escape" && document.activeElement === q){
+          q.value = "";
+          filterCards();
+          q.blur();
+        }
+      });
+
+      // Quick actions
+      $("#copyHome").addEventListener("click", () => {
+        const full = location.origin + "/";
+        navigator.clipboard.writeText(full).then(() => showToast("Link hub copiat."), () => showToast("Nu pot copia linkul."));
+      });
+
+      openLastBtn.addEventListener("click", () => {
+        const last = getLast();
+        if(last && last.url){
+          window.open(last.url, "_blank", "noopener");
+        }else{
+          showToast("Nu exista istoric inca.");
+        }
+      });
+
+      // Cloudflare Access logout: common endpoints.
+      // (1) /cdn-cgi/access/logout is the standard for Access.
+      // Some setups also accept /cdn-cgi/access/logout?redirect=...
+      $("#logout").addEventListener("click", () => {
+        const redir = encodeURIComponent(location.origin + "/");
+        // try standard logout
+        location.href = `/cdn-cgi/access/logout?redirect=${redir}`;
+      });
+
+      // Init
+      renderLast();
+      filterCards();
+    })();
+  </script>
 </body>
 </html>
