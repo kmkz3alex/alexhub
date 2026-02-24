@@ -608,6 +608,78 @@ function parseCsv(text){
 }
 
 /* ==========================================================
+   [ANCHOR:REMOTE_API]
+   Online API adapter (Cloudflare Worker + D1)
+   IMPORTANT: must be defined BEFORE any idb* uses USE_REMOTE
+   ========================================================== */
+const USE_REMOTE = true;
+
+// Mutam pe online doar aceste store-uri acum.
+// Settings raman local pana facem migratia separata.
+const REMOTE_STORES = new Set([
+  'companies','contacts','activities','tasks','events','attachments'
+]);
+
+async function apiGetJson(url){
+  const r = await fetch(url, { method:'GET', headers:{'accept':'application/json'} });
+  const j = await r.json().catch(()=>({ok:false,error:'bad json'}));
+  if (!r.ok || j.ok === false) {
+    console.error('[API GET ERROR]', url, r.status, j);
+    throw new Error(j.error || ('HTTP ' + r.status));
+  }
+  return j;
+}
+
+async function apiPostJson(url, body){
+  const r = await fetch(url, {
+    method:'POST',
+    headers:{'content-type':'application/json','accept':'application/json'},
+    body: JSON.stringify(body || {})
+  });
+  const j = await r.json().catch(()=>({ok:false,error:'bad json'}));
+  if (!r.ok || j.ok === false) {
+    console.error('[API POST ERROR]', url, r.status, j, body);
+    throw new Error(j.error || ('HTTP ' + r.status));
+  }
+  return j;
+}
+
+function storeToEntity(storeName){
+  const s = String(storeName || '').toLowerCase();
+  if (s.includes('company')) return 'companies';
+  if (s.includes('contact')) return 'contacts';
+  if (s.includes('activit')) return 'activities';
+  if (s.includes('task')) return 'tasks';
+  if (s.includes('event')) return 'events';
+  if (s.includes('attach')) return 'attachments';
+  return storeName;
+}
+
+async function remoteList(storeName){
+  const entity = storeToEntity(storeName);
+  const j = await apiGetJson(`/api/fundraising/${entity}`);
+  return j.items || [];
+}
+
+async function remoteGet(storeName, id){
+  const entity = storeToEntity(storeName);
+  const j = await apiGetJson(`/api/fundraising/${entity}/${encodeURIComponent(id)}`);
+  return j.item || null;
+}
+
+async function remoteUpsert(storeName, obj){
+  const entity = storeToEntity(storeName);
+  const j = await apiPostJson(`/api/fundraising/${entity}/upsert`, obj);
+  return j.id || (obj && obj.id) || null;
+}
+
+async function remoteDelete(storeName, id){
+  const entity = storeToEntity(storeName);
+  await apiPostJson(`/api/fundraising/${entity}/delete`, { id });
+  return true;
+}
+
+/* ==========================================================
    [ANCHOR:DB]
    IndexedDB wrapper
    ========================================================== */
@@ -691,6 +763,10 @@ function idbPut(storeName, value){
 }
 
 function idbAdd(storeName, value){
+  // pentru remote: nu exista diferenta reala intre add si upsert (creaza daca nu exista)
+  if (USE_REMOTE && REMOTE_STORES.has(storeName)){
+    return remoteUpsert(storeName, value).then(()=>true);
+  }
   return new Promise((resolve, reject)=>{
     const s = tx(storeName, 'readwrite');
     const req = s.add(value);
@@ -1805,7 +1881,7 @@ function toXlsHtml(tableTitle, rows, headers){
    [ANCHOR:REFRESH_ALL]
    ========================================================== */
 async function refreshAll(){
-  if (!USE_REMOTE && !db) return;
+  if (!db) return;
 
   // today badge
   $$('#todayDateBadge').textContent = toDateOnlyISO(new Date());
@@ -2184,11 +2260,9 @@ $$('#btnExportContactsXls').onclick = async ()=>{
    [ANCHOR:BOOT]
    ========================================================== */
 (async function init(){
-  if (!USE_REMOTE){
-    db = await openDb();
-  } else {
-    db = null; // nu folosim IndexedDB pentru entitatile remote
-  }
+  // IMPORTANT: tinem IndexedDB deschis chiar si cand USE_REMOTE = true
+  // deoarece Settings (si alte parti) folosesc STORES.settings local.
+  db = await openDb();
   await ensureDefaults();
 
   // load settings into UI
