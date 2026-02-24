@@ -1886,11 +1886,11 @@ async function refreshAll(){
   // today badge
   $$('#todayDateBadge').textContent = toDateOnlyISO(new Date());
 
-  const companies = await idbGetAll(STORES.companies);
-  const contacts = await idbGetAll(STORES.contacts);
-  const tasks = await idbGetAll(STORES.tasks);
-  const activities = await idbGetAll(STORES.activities);
-  const events = await idbGetAll(STORES.events);
+const companies  = await idbGetAll(STORES.companies).catch(e=>{ console.error(e); return []; });
+const contacts   = await idbGetAll(STORES.contacts).catch(e=>{ console.error(e); return []; });
+const tasks      = await idbGetAll(STORES.tasks).catch(e=>{ console.error(e); return []; });
+const activities = await idbGetAll(STORES.activities).catch(e=>{ console.error(e); return []; });
+const events     = await idbGetAll(STORES.events).catch(e=>{ console.error(e); return []; });
 
   // maps
   const companiesMap = new Map(companies.map(c=>[c.id, c]));
