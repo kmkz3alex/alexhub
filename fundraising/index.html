@@ -1639,13 +1639,104 @@ async function openCompanyModal(companyId){
       }
     });
 
-    $$('#btnAddTask', root).onclick = async ()=>{
-      const due = prompt('Due date (YYYY-MM-DD):', toDateOnlyISO(new Date()));
-      if (!due) return;
-      await createTask({companyId, taskType:'Custom', dueDateISO: due, notes:'', ruleSource:'manual'});
+$$('#btnAddTask', root).onclick = async ()=>{
+  const dueDefault = toDateOnlyISO(new Date());
+
+  const modalHtml = `
+    <div class="modal">
+      <div class="card modalCard">
+        <div class="hd">
+          <strong>Add task</strong>
+          <button class="miniBtn" id="btnCloseModal">Close</button>
+        </div>
+        <div class="bd">
+          <div class="grid2">
+            <div>
+              <div class="lbl">Task title</div>
+              <input id="tTitle" class="inp" placeholder="e.g. Follow-up call" />
+            </div>
+            <div>
+              <div class="lbl">Due date</div>
+              <input id="tDue" class="inp" placeholder="YYYY-MM-DD" value="${dueDefault}" />
+            </div>
+          </div>
+
+          <div style="margin-top:10px;">
+            <div class="lbl">Notes</div>
+            <textarea id="tNotes" class="ta" rows="4" placeholder="Optional notes..."></textarea>
+          </div>
+
+          <div style="display:flex; gap:8px; margin-top:12px; align-items:center;">
+            <button class="miniBtn" id="tPlus3">+3d</button>
+            <button class="miniBtn" id="tPlus7">+7d</button>
+            <div style="flex:1"></div>
+            <button class="miniBtn primary" id="btnSaveTask">Save</button>
+          </div>
+
+          <div class="muted" id="tErr" style="margin-top:8px; color:#c33;"></div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  openModal(modalHtml, (mroot)=>{
+    $$('#btnCloseModal', mroot).onclick = closeModal;
+
+    const titleEl = $$('#tTitle', mroot);
+    const dueEl = $$('#tDue', mroot);
+    const notesEl = $$('#tNotes', mroot);
+    const errEl = $$('#tErr', mroot);
+
+    const isYYYYMMDD = (s)=> /^\d{4}-\d{2}-\d{2}$/.test(String(s||'').trim());
+
+    const addDays = (days)=>{
+      const v = (dueEl.value || '').trim();
+      const base = isYYYYMMDD(v) ? v : dueDefault;
+      const [y,m,d] = base.split('-').map(n=>parseInt(n,10));
+      const dt = new Date(y, m-1, d);
+      dt.setDate(dt.getDate() + Number(days||0));
+      dueEl.value = toDateOnlyISO(dt);
+    };
+
+    $$('#tPlus3', mroot).onclick = ()=> addDays(3);
+    $$('#tPlus7', mroot).onclick = ()=> addDays(7);
+
+    $$('#btnSaveTask', mroot).onclick = async ()=>{
+      errEl.textContent = '';
+
+      const title = (titleEl.value || '').trim();
+      const due = (dueEl.value || '').trim();
+      const notes = (notesEl.value || '').trim();
+
+      if (!title){
+        errEl.textContent = 'Please enter a task title.';
+        titleEl.focus();
+        return;
+      }
+      if (!isYYYYMMDD(due)){
+        errEl.textContent = 'Due date must be YYYY-MM-DD.';
+        dueEl.focus();
+        return;
+      }
+
+      await createTask({
+        companyId,
+        taskType: title,
+        dueDateISO: due,
+        notes: notes,
+        ruleSource: 'manual'
+      });
+
+      closeModal();
+      // refresh lists
       openCompanyModal(companyId);
       refreshAll();
     };
+
+    // UX: focus title
+    setTimeout(()=>{ try{ titleEl.focus(); }catch(e){} }, 50);
+  });
+};
   });
 }
 
