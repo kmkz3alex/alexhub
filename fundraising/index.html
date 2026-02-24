@@ -678,7 +678,91 @@ async function remoteDelete(storeName, id){
   await apiPostJson(`/api/fundraising/${entity}/delete`, { id });
   return true;
 }
+  
+function safeJsonParse(s){
+  try { return JSON.parse(s); } catch { return null; }
+}
 
+function normalizeFromDb(entity, row){
+  // row = ce vine din D1 (snake_case + data_json)
+  const dj = row && row.data_json ? safeJsonParse(row.data_json) : null;
+  const o = (dj && typeof dj === 'object') ? { ...dj } : {};
+
+  // id always
+  if (row && row.id && !o.id) o.id = row.id;
+
+  if (entity === 'companies'){
+    if (row.name != null) o.name = row.name;
+    if (row.status != null) o.status = row.status;
+    if (row.notes != null && o.notes == null) o.notes = row.notes;
+    return o;
+  }
+
+  if (entity === 'tasks'){
+    // Map snake_case -> camelCase expected by UI
+    o.companyId = o.companyId || o.company_id || row.company_id || o.company;
+    o.contactId = o.contactId || o.contact_id || row.contact_id || null;
+
+    // UI-ul tău folosește taskType + notes (nu title/description)
+    o.taskType = o.taskType || row.title || o.title || 'Task';
+    o.notes = (o.notes != null ? o.notes : (row.description != null ? row.description : ''));
+
+    // due date
+    const dd = o.dueDate || o.due_date || o.dueDateISO || row.due_date;
+    if (dd) o.dueDate = dd; // UI-ul tău folosește dueDate în multe locuri
+
+    // status (UI folosește de obicei 'Open')
+    if (!o.status) o.status = row.status || 'Open';
+    if (o.status === 'open') o.status = 'Open';
+
+    // snooze
+    if (o.snoozeUntil == null && row.snooze_until != null) o.snoozeUntil = row.snooze_until;
+
+    // timestamps (dacă UI le folosește)
+    if (o.createdAt == null && row.created_at) o.createdAt = row.created_at;
+    if (o.updatedAt == null && row.updated_at) o.updatedAt = row.updated_at;
+
+    return o;
+  }
+
+  if (entity === 'activities'){
+    o.companyId = o.companyId || o.company_id || row.company_id;
+    o.contactId = o.contactId || o.contact_id || row.contact_id || null;
+    // UI-ul tău avea activity_date; worker are occurred_at — noi le unificăm
+    if (o.activity_date == null && row.activity_date) o.activity_date = row.activity_date;
+    if (o.occurred_at == null && row.occurred_at) o.occurred_at = row.occurred_at;
+    if (o.type == null && row.type) o.type = row.type;
+    if (o.notes == null && row.notes) o.notes = row.notes;
+    return o;
+  }
+
+  if (entity === 'contacts'){
+    o.companyId = o.companyId || o.company_id || row.company_id;
+    if (o.name == null && row.name) o.name = row.name;
+    if (o.email == null && row.email) o.email = row.email;
+    if (o.phone == null && row.phone) o.phone = row.phone;
+    return o;
+  }
+
+  if (entity === 'events'){
+    if (o.startDate == null && row.start_date) o.startDate = row.start_date;
+    return o;
+  }
+
+  if (entity === 'attachments'){
+    o.companyId = o.companyId || o.company_id || row.company_id || null;
+    o.contactId = o.contactId || o.contact_id || row.contact_id || null;
+    o.activityId = o.activityId || o.activity_id || row.activity_id || null;
+    if (o.filename == null && row.filename) o.filename = row.filename;
+    if (o.mimeType == null && row.mime_type) o.mimeType = row.mime_type;
+    if (o.url == null && row.url) o.url = row.url;
+    if (o.notes == null && row.notes) o.notes = row.notes;
+    return o;
+  }
+
+  return o;
+}
+  
 /* ==========================================================
    [ANCHOR:DB]
    IndexedDB wrapper
