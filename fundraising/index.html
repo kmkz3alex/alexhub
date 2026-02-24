@@ -658,13 +658,14 @@ function storeToEntity(storeName){
 async function remoteList(storeName){
   const entity = storeToEntity(storeName);
   const j = await apiGetJson(`/api/fundraising/${entity}`);
-  return j.items || [];
+  const items = j.items || [];
+  return items.map(r => normalizeFromDb(entity, r));
 }
 
 async function remoteGet(storeName, id){
   const entity = storeToEntity(storeName);
   const j = await apiGetJson(`/api/fundraising/${entity}/${encodeURIComponent(id)}`);
-  return j.item || null;
+  return j.item ? normalizeFromDb(entity, j.item) : null;
 }
 
 async function remoteUpsert(storeName, obj){
