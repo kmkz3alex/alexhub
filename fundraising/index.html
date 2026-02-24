@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ro">
 <head>
   <meta charset="UTF-8" />
@@ -156,42 +156,6 @@
       border-radius:14px; padding:10px 12px; box-shadow:var(--shadow);
       max-width: 420px;
     }
-
-/* Contacts - card layout */
-.contactCards{
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 10px;
-}
-
-.contactCard{
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px;
-  padding: 10px;
-  background: rgba(255,255,255,0.02);
-}
-
-.contactCardHd{
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.contactCardBd{
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
-}
-
-.contactCard .field label{
-  font-size: 12px;
-  opacity: 0.8;
-  margin-bottom: 4px;
-  display: block;
-}
-
   </style>
 </head>
 
@@ -216,12 +180,11 @@
         <div class="tab" data-tab="settings">Settings</div>
       </div>
 
-<div class="actions">
-  <button class="btn" id="btnQuickAddCompany">+ Company</button>
-  <button class="btn primary" id="btnBackupJson">Backup JSON</button>
-  <button class="btn" id="btnExportIcsFiltered">Export .ics (filtered)</button>
-</div>
-
+      <div class="actions">
+        <button class="btn" id="btnQuickAddCompany">+ Company</button>
+        <button class="btn primary" id="btnBackupJson">Backup JSON</button>
+        <button class="btn" id="btnExportIcsToday">Export .ics (today)</button>
+      </div>
     </div>
 
     <!-- =========================
@@ -388,46 +351,15 @@
                 <span class="muted">counts + sums</span>
               </div>
               <div class="bd">
-                <div class="muted">Log an activity of type "Contract signed" with Contract type + optional Amount EUR to populate this report.</div>
+                <div class="muted">MVP note: requires logging activities type "Contract signed" with contractType field (coming next patch).</div>
                 <div class="sep"></div>
                 <div id="reportContracts"></div>
               </div>
             </div>
           </div>
 
-<div class="sep"></div>
-
-<div class="card" style="box-shadow:none;">
-  <div class="hd">
-    <strong>Conversion + sums per event</strong>
-    <span class="muted">linked companies → contracts signed</span>
-  </div>
-  <div class="bd">
-    <div class="row">
-      <button class="miniBtn" id="btnExportEventReportCsv">Export CSV</button>
-    </div>
-    <div class="sep"></div>
-    <div id="reportEvents"></div>
-  </div>
-</div>
-
-<div class="sep"></div>
-
-<div class="card" style="box-shadow:none;">
-  <div class="hd">
-    <strong>Pipeline funnel per event</strong>
-    <span class="muted">counts by stage</span>
-  </div>
-  <div class="bd">
-    <div class="row">
-      <button class="miniBtn" id="btnExportEventPipelineCsv">Export CSV</button>
-    </div>
-    <div class="sep"></div>
-    <div id="reportEventPipeline"></div>
-  </div>
-</div>
-
           <div class="sep"></div>
+          <div class="muted">Next: conversion per event + sums (requires linking companies to events and adding estimated/closed values).</div>
         </div>
       </div>
     </section>
@@ -462,17 +394,6 @@
               </div>
               <div class="sep"></div>
               <div id="importResult" class="muted"></div>
-
-<div class="sep"></div>
-
-<div class="row" style="gap:10px; align-items:center;">
-  <button class="btn" id="btnCreateLegacyTasks">Create initial follow-up tasks (one-time)</button>
-  <span class="muted">
-    Creates tasks based on imported flags: Follow up = +3 days, Proiect trimis = +7 days. No duplicates.
-  </span>
-</div>
-<div class="muted" id="legacyTasksResult" style="margin-top:8px;"></div>
-
             </div>
           </div>
 
@@ -592,34 +513,15 @@ function parseBoolX(v){
 }
 function safeStr(v){ return (v===null || v===undefined) ? '' : String(v).trim(); }
 
-function toast(msg, actionLabel=null, actionFn=null, ms=null){
+function toast(msg){
   const root = $$('#toastRoot');
   root.classList.remove('hidden');
   root.innerHTML = '';
-
   const el = document.createElement('div');
   el.className = 'toast';
-
-  const text = document.createElement('span');
-  text.textContent = msg;
-  el.appendChild(text);
-
-  if (actionLabel && typeof actionFn === 'function'){
-    const btn = document.createElement('button');
-    btn.className = 'miniBtn';
-    btn.textContent = actionLabel;
-    btn.style.marginLeft = '10px';
-    btn.onclick = ()=>{
-      try{ actionFn(); } catch(e){ console.error(e); }
-      root.classList.add('hidden'); root.innerHTML='';
-    };
-    el.appendChild(btn);
-  }
-
+  el.textContent = msg;
   root.appendChild(el);
-
-  const timeout = (ms != null) ? ms : (actionLabel ? 6500 : 2600);
-  setTimeout(()=>{ root.classList.add('hidden'); root.innerHTML=''; }, timeout);
+  setTimeout(()=>{ root.classList.add('hidden'); root.innerHTML=''; }, 2600);
 }
 
 function downloadText(filename, text, mime='text/plain;charset=utf-8'){
@@ -775,7 +677,11 @@ function tx(storeName, mode='readonly'){
   const t = db.transaction(storeName, mode);
   return t.objectStore(storeName);
 }
+
 function idbPut(storeName, value){
+  if (USE_REMOTE && REMOTE_STORES.has(storeName)){
+    return remoteUpsert(storeName, value).then(()=>true);
+  }
   return new Promise((resolve, reject)=>{
     const s = tx(storeName, 'readwrite');
     const req = s.put(value);
@@ -783,6 +689,7 @@ function idbPut(storeName, value){
     req.onerror = ()=> reject(req.error);
   });
 }
+
 function idbAdd(storeName, value){
   return new Promise((resolve, reject)=>{
     const s = tx(storeName, 'readwrite');
@@ -791,7 +698,11 @@ function idbAdd(storeName, value){
     req.onerror = ()=> reject(req.error);
   });
 }
+
 function idbGet(storeName, key){
+  if (USE_REMOTE && REMOTE_STORES.has(storeName)){
+    return remoteGet(storeName, key);
+  }
   return new Promise((resolve, reject)=>{
     const s = tx(storeName, 'readonly');
     const req = s.get(key);
@@ -799,7 +710,11 @@ function idbGet(storeName, key){
     req.onerror = ()=> reject(req.error);
   });
 }
+
 function idbGetAll(storeName){
+  if (USE_REMOTE && REMOTE_STORES.has(storeName)){
+    return remoteList(storeName);
+  }
   return new Promise((resolve, reject)=>{
     const s = tx(storeName, 'readonly');
     const req = s.getAll();
@@ -807,7 +722,11 @@ function idbGetAll(storeName){
     req.onerror = ()=> reject(req.error);
   });
 }
+
 function idbDelete(storeName, key){
+  if (USE_REMOTE && REMOTE_STORES.has(storeName)){
+    return remoteDelete(storeName, key).then(()=>true);
+  }
   return new Promise((resolve, reject)=>{
     const s = tx(storeName, 'readwrite');
     const req = s.delete(key);
@@ -815,6 +734,7 @@ function idbDelete(storeName, key){
     req.onerror = ()=> reject(req.error);
   });
 }
+
 function idbClear(storeName){
   return new Promise((resolve, reject)=>{
     const s = tx(storeName, 'readwrite');
@@ -1020,9 +940,6 @@ async function importCsvRows(rows, mode='replace'){
    [ANCHOR:TASK_ENGINE]
    ========================================================== */
 const TASK_STATUS = { OPEN:'Open', DONE:'Done', SNOOZED:'Snoozed' };
-let __undoTaskSnapshot = null;     // full task object before delete
-let __undoTaskTimer = null;        // timer id
-
 
 function taskDot(task, todayISO){
   if (task.status !== TASK_STATUS.OPEN) return 'ok';
@@ -1031,7 +948,7 @@ function taskDot(task, todayISO){
   return 'ok';
 }
 
-async function createTask({companyId, contactId='', taskType='Follow-up', dueDateISO, notes='', ruleSource='manual', meta=null}){
+async function createTask({companyId, contactId='', taskType='Follow-up', dueDateISO, notes='', ruleSource='manual'}){
   const t = {
     id: uid(),
     companyId,
@@ -1042,70 +959,11 @@ async function createTask({companyId, contactId='', taskType='Follow-up', dueDat
     snoozeUntil: '',
     ruleSource,
     notes,
-    meta: meta || null,
     createdAt: nowIso(),
     updatedAt: nowIso()
   };
   await idbAdd(STORES.tasks, t);
   return t;
-}
-
-async function bulkCreateInitialTasksFromLegacyFlags(){
-  const companies = await idbGetAll(STORES.companies);
-  const tasks = await idbGetAll(STORES.tasks);
-
-  const today = new Date();
-  const todayISO = toDateOnlyISO(today);
-
-  // helper: check if company already has any open follow-up-ish task
-  const hasOpenTask = (companyId) => tasks.some(t =>
-    t.companyId === companyId &&
-    t.status === TASK_STATUS.OPEN && !t.isDeleted &&
-    ['Follow-up','Prim Contact follow-up','Lost re-entry'].includes(t.taskType)
-  );
-
-  let created = 0, skippedExisting = 0, skippedNoFlags = 0;
-
-  for (const c of companies){
-    const flags = c.legacyFlags || {};
-    const hasFU = !!flags.followUpFlag;
-    const hasProj = !!flags.proiectTrimis;
-
-    if (!hasFU && !hasProj){
-      skippedNoFlags++;
-      continue;
-    }
-
-    if (hasOpenTask(c.id)){
-      skippedExisting++;
-      continue;
-    }
-
-    // rule:
-    // - Follow up flag -> +3 days (more urgent)
-    // - Proiect trimis -> +7 days
-    // - if both -> use +3 days and mention both
-    const due = new Date(today);
-    let days = hasFU ? 3 : 7;
-    due.setDate(due.getDate() + days);
-
-    const noteParts = [];
-    if (hasFU) noteParts.push('Follow up flag');
-    if (hasProj) noteParts.push('Proiect trimis flag');
-
-    await createTask({
-      companyId: c.id,
-      contactId: '',
-      taskType: 'Follow-up',
-      dueDateISO: toDateOnlyISO(due),
-      notes: `Legacy import: ${noteParts.join(' + ')} → +${days}d`,
-      ruleSource: 'legacy-import'
-    });
-
-    created++;
-  }
-
-  return {created, skippedExisting, skippedNoFlags, totalCompanies: companies.length, todayISO};
 }
 
 async function markTaskDone(taskId){
@@ -1126,58 +984,6 @@ async function snoozeTask(taskId, newDueISO){
   await idbPut(STORES.tasks, t);
 }
 
-async function createSecondPrimContactTaskFromFirstTask(firstTaskId){
-  const first = await idbGet(STORES.tasks, firstTaskId);
-  if (!first || first.status !== TASK_STATUS.OPEN) return {ok:false, reason:'missing_or_not_open'};
-
-  const m = first.meta || null;
-  if (!m || m.kind !== 'prim-contact' || m.sequence !== 1 || !m.baseDateISO || !m.baseActivityId){
-    return {ok:false, reason:'not_eligible'};
-  }
-
-  const primCadence = await getSetting('primCadence', [5,10]);
-  const secondDays = Number(primCadence[1] || 10);
-
-  // Avoid duplicates: if a seq=2 exists for same baseActivityId, do nothing
-  const allTasks = await idbGetAll(STORES.tasks);
-  const already = allTasks.some(t =>
-    t.status === TASK_STATUS.OPEN && !t.isDeleted &&
-    t.meta && t.meta.kind === 'prim-contact' &&
-    t.meta.baseActivityId === m.baseActivityId &&
-    t.meta.sequence === 2
-  );
-  if (already) return {ok:false, reason:'duplicate'};
-
-  // due = baseDate + 10 days (but not in the past)
-  const base = new Date(m.baseDateISO + 'T00:00:00');
-  const due = new Date(base.getTime());
-  due.setDate(due.getDate() + secondDays);
-
-  const todayISO = toDateOnlyISO(new Date());
-  let dueISO = toDateOnlyISO(due);
-  if (dueISO < todayISO) dueISO = todayISO;
-
-  await createTask({
-    companyId: first.companyId,
-    contactId: first.contactId || '',
-    taskType: 'Prim Contact follow-up #2',
-    dueDateISO: dueISO,
-    notes: `Auto: Prim Contact second reminder (+${secondDays}d from base date)`,
-    ruleSource: 'auto',
-    meta: {
-      kind: 'prim-contact',
-      sequence: 2,
-      baseDateISO: m.baseDateISO,
-      baseActivityId: m.baseActivityId
-    }
-  });
-
-  // Optional cleanup: mark first task done to keep Today clean
-  await markTaskDone(firstTaskId);
-
-  return {ok:true, dueISO};
-}
-
 /* ==========================================================
    [ANCHOR:ACTIVITIES]
    ========================================================== */
@@ -1196,53 +1002,39 @@ const ACT_TYPES = [
   'Event attendance confirmed'
 ];
 
-async function addActivity({companyId, contactId='', type, dateTimeISO, outcome='', notes='', createFollowUp=false, followUpDueDateISO='', contractType='', amountEUR='', attachmentIds=[], idOverride='' }){
-
-const a = {
-  id: (idOverride || uid()),
-  companyId,
-  contactId,
-  type,
-  dateTime: dateTimeISO,
-  outcome,
-  notes,
-  contractType: contractType || '',
-  amountEUR: amountEUR || '',
-  createFollowUp: !!createFollowUp,
-  followUpDueDate: followUpDueDateISO || '',
-  attachmentIds: Array.isArray(attachmentIds) ? attachmentIds : [],
-  createdAt: nowIso(),
-  updatedAt: nowIso()
-};
-
+async function addActivity({companyId, contactId='', type, dateTimeISO, outcome='', notes='', createFollowUp=false, followUpDueDateISO='' }){
+  const a = {
+    id: uid(),
+    companyId,
+    contactId,
+    type,
+    dateTime: dateTimeISO,
+    outcome,
+    notes,
+    createFollowUp: !!createFollowUp,
+    followUpDueDate: followUpDueDateISO || '',
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  };
   await idbAdd(STORES.activities, a);
 
   // Auto create tasks rules
   const primCadence = await getSetting('primCadence', [5,10]);
   const fuDefault = await getSetting('followUpDefaultDays', 7);
 
-if (type === 'Prim Contact (email/call/other)'){
-  const d0 = new Date(dateTimeISO);
-  const baseDateISO = toDateOnlyISO(d0); // date-only, local
-  const due = new Date(d0.getTime());
-  due.setDate(due.getDate() + Number(primCadence[0] || 5));
-
-  await createTask({
-    companyId,
-    contactId,
-    taskType: 'Prim Contact follow-up',
-    dueDateISO: toDateOnlyISO(due),
-    notes: 'Auto: Prim Contact +'+(primCadence[0] || 5)+' days',
-    ruleSource: 'auto',
-    meta: {
-      kind: 'prim-contact',
-      sequence: 1,
-      baseDateISO: baseDateISO,
-      baseActivityId: a.id
-    }
-  });
-}
- else if (createFollowUp){
+  if (type === 'Prim Contact (email/call/other)'){
+    const d0 = new Date(dateTimeISO);
+    const due = new Date(d0.getTime());
+    due.setDate(due.getDate() + Number(primCadence[0] || 5));
+    await createTask({
+      companyId,
+      contactId,
+      taskType: 'Prim Contact follow-up',
+      dueDateISO: toDateOnlyISO(due),
+      notes: 'Auto: Prim Contact +'+(primCadence[0] || 5)+' days',
+      ruleSource: 'auto'
+    });
+  } else if (createFollowUp){
     let dueISO = followUpDueDateISO;
     if (!dueISO){
       const d0 = new Date(dateTimeISO);
@@ -1260,43 +1052,6 @@ if (type === 'Prim Contact (email/call/other)'){
   }
 
   return a;
-}
-
-async function saveAttachmentBlob({companyId, activityId, file}){
-  const rec = {
-    id: uid(),
-    companyId,
-    activityId,
-    fileName: file.name || 'attachment',
-    mimeType: file.type || 'application/octet-stream',
-    sizeBytes: file.size || 0,
-    storedAs: 'blob',
-    blobData: file, // File is a Blob; IndexedDB can store it
-    referencePathOrNote: '',
-    uploadedAt: nowIso()
-  };
-  await idbAdd(STORES.attachments, rec);
-  return rec.id;
-}
-
-async function downloadAttachment(attachmentId){
-  const a = await idbGet(STORES.attachments, attachmentId);
-  if (!a) return;
-
-  if (a.storedAs === 'blob' && a.blobData){
-    const blob = a.blobData;
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = a.fileName || 'attachment';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(()=>URL.revokeObjectURL(url), 2000);
-    return;
-  }
-
-  alert('Attachment is not stored as blob. Add a reference path/note instead.');
 }
 
 /* ==========================================================
@@ -1335,7 +1090,6 @@ async function exportIcsForTasks(tasks, filename='reminders.ics'){
 
   for (const t of tasks){
     if (t.status !== TASK_STATUS.OPEN) continue;
-if (t.isDeleted) continue;
     const company = await idbGet(STORES.companies, t.companyId);
     const title = `${t.taskType}: ${company ? company.name : '(company)'}`
     const uidLine = (t.id + '@fundraisingcrm.local');
@@ -1392,7 +1146,7 @@ function renderTasksTable(tasks, companiesMap){
   const q = safeStr($$('#taskSearch').value).toLowerCase();
   const filter = $$('#taskFilter').value;
 
-  let list = tasks.filter(t => t.status === TASK_STATUS.OPEN && !t.isDeleted);
+  let list = tasks.filter(t => t.status === TASK_STATUS.OPEN);
 
   if (filter === 'today') list = list.filter(t => t.dueDate === todayISO);
   if (filter === 'overdue') list = list.filter(t => t.dueDate < todayISO);
@@ -1428,15 +1182,10 @@ function renderTasksTable(tasks, companiesMap){
     html.push(`<td>${t.taskType}</td>`);
     html.push(`<td><a href="#" data-open-company="${t.companyId}">${escapeHtml(c?.name || '(company)')}</a></td>`);
     html.push(`<td class="muted">${escapeHtml(t.notes || '')}</td>`);
-
-const isPrim1 = (t.taskType === 'Prim Contact follow-up' && t.meta && t.meta.kind === 'prim-contact' && t.meta.sequence === 1);
-
-html.push(`<td>
-  <button class="miniBtn primary" data-done-task="${t.id}">Done</button>
-  <button class="miniBtn" data-snooze-task="${t.id}">Snooze</button>
-  <button class="miniBtn danger" data-del-task="${t.id}">Delete</button>
-</td>`);
-
+    html.push(`<td>
+      <button class="miniBtn primary" data-done-task="${t.id}">Done</button>
+      <button class="miniBtn" data-snooze-task="${t.id}">Snooze</button>
+    </td>`);
     html.push('</tr>');
   }
 
@@ -1565,8 +1314,6 @@ async function openCompanyModal(companyId){
   const contacts = (await idbGetAll(STORES.contacts)).filter(c=>c.companyId===companyId);
   const activities = (await idbGetAll(STORES.activities)).filter(a=>a.companyId===companyId);
   const tasks = (await idbGetAll(STORES.tasks)).filter(t=>t.companyId===companyId);
-const events = await idbGetAll(STORES.events);
-const attachments = (await idbGetAll(STORES.attachments)).filter(x=>x.companyId===companyId);
 
   activities.sort((a,b)=> (b.dateTime||'').localeCompare(a.dateTime||''));
   tasks.sort((a,b)=> (a.dueDate||'').localeCompare(b.dueDate||''));
@@ -1614,47 +1361,24 @@ const attachments = (await idbGetAll(STORES.attachments)).filter(x=>x.companyId=
                 <input id="cIntroducedBy" placeholder="ex: Lili" />
               </div>
             </div>
-<div class="row">
-  <div class="field">
-    <label>Next steps</label>
-    <input id="cNextSteps" placeholder="ex: follow-up email, set meeting..." />
-  </div>
-  <div class="field" style="max-width:220px;">
-    <label>Contribution type</label>
-    <input id="cContribution" placeholder="Sponsorizare / Redirect 20% / ..." />
-  </div>
-  <div class="field" style="max-width:220px;">
-    <label>Estimated EUR</label>
-    <input id="cEstimate" placeholder="ex: 5000" />
-  </div>
-</div>
-
-<div class="row">
-  <div class="field" style="max-width:360px;">
-    <label>Event (CRM)</label>
-    <select id="cEvent">
-      <option value=""></option>
-    </select>
-  </div>
-</div>
-
-            <div class="field">
-              <div class="row" style="justify-content:space-between; align-items:flex-end;">
-                <label style="margin:0;">Notes (history)</label>
-                <button class="miniBtn" id="btnEditNotes">Edit</button>
+            <div class="row">
+              <div class="field">
+                <label>Next steps</label>
+                <input id="cNextSteps" placeholder="ex: follow-up email, set meeting..." />
               </div>
-              <textarea id="cNotes" placeholder="notes..." readonly></textarea>
-
-              <div class="sep"></div>
-
-              <label>Add note</label>
-              <div class="row" style="gap:10px; align-items:flex-end;">
-                <textarea id="cNewNote" placeholder="Write a new note, then press Add..." style="min-height:64px;"></textarea>
-                <button class="miniBtn primary" id="btnAddNote" style="height:40px;">Add</button>
+              <div class="field" style="max-width:220px;">
+                <label>Contribution type</label>
+                <input id="cContribution" placeholder="Sponsorizare / Redirect 20% / ..." />
               </div>
-              <div class="muted">Add will append a timestamped entry to Notes (history).</div>
+              <div class="field" style="max-width:220px;">
+                <label>Estimated EUR</label>
+                <input id="cEstimate" placeholder="ex: 5000" />
+              </div>
             </div>
-
+            <div class="field">
+              <label>Notes</label>
+              <textarea id="cNotes" placeholder="notes..."></textarea>
+            </div>
             <div class="row">
               <button class="miniBtn primary" id="btnSaveCompany">Save</button>
               <button class="miniBtn danger" id="btnDeleteCompany">Delete</button>
@@ -1713,77 +1437,6 @@ const attachments = (await idbGetAll(STORES.attachments)).filter(x=>x.companyId=
     $$('#cEstimate', root).value = company.estimatedValueEUR || '';
     $$('#cNotes', root).value = company.notes || '';
 
-    // Notes UX: history textarea is read-only by default; edit via button
-    const notesEl = $$('#cNotes', root);
-    const btnEditNotes = $$('#btnEditNotes', root);
-    const newNoteEl = $$('#cNewNote', root);
-    const btnAddNote = $$('#btnAddNote', root);
-
-    const pad2 = (n)=>String(n).padStart(2,'0');
-    const stampLocal = (d=new Date())=>{
-      // format: YYYY-MM-DD HH:MM (local)
-      return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-    };
-
-    if (notesEl){
-      notesEl.setAttribute('readonly', 'readonly');
-    }
-
-    if (btnEditNotes && notesEl){
-      btnEditNotes.onclick = ()=>{
-        const isRO = notesEl.hasAttribute('readonly');
-        if (isRO){
-          notesEl.removeAttribute('readonly');
-          notesEl.focus();
-          btnEditNotes.textContent = 'Done';
-        } else {
-          notesEl.setAttribute('readonly', 'readonly');
-          btnEditNotes.textContent = 'Edit';
-        }
-      };
-    }
-
-    if (btnAddNote && notesEl && newNoteEl){
-      btnAddNote.onclick = ()=>{
-        const text = (newNoteEl.value || '').trim();
-        if (!text){
-          alert('Note is empty.');
-          return;
-        }
-
-        const entry = `[${stampLocal()}]\n${text}\n`;
-
-        const existing = (notesEl.value || '').trim();
-        notesEl.value = existing ? (existing + '\n\n' + entry) : entry;
-
-  // keep history read-only (even if user clicked Edit before)
-  notesEl.setAttribute('readonly', 'readonly');
-  if (btnEditNotes) btnEditNotes.textContent = 'Edit';
-
-  // UX: scroll to bottom so the latest entry is visible
-  notesEl.scrollTop = notesEl.scrollHeight;
-  notesEl.focus();
-  setTimeout(()=>notesEl.blur(), 150);
-
-  newNoteEl.value = '';
-  toast('Note added (remember to Save company)');
-      };
-    }
-
-// fill events dropdown
-const evSel = $$('#cEvent', root);
-if (evSel){
-  // sort by startDate then name
-  const evList = (events || []).slice().sort((a,b)=> (a.startDate||'').localeCompare(b.startDate||'') || (a.name||'').localeCompare(b.name||''));
-  for (const e of evList){
-    const opt = document.createElement('option');
-    opt.value = e.id;
-    opt.textContent = `${e.name}${e.startDate ? (' ('+e.startDate+')') : ''}`;
-    evSel.appendChild(opt);
-  }
-  evSel.value = company.eventId || '';
-}
-
     $$('#btnSaveCompany', root).onclick = async ()=>{
       company.pipelineStatus = statusEl.value;
       company.priority = $$('#cPriority', root).value;
@@ -1792,8 +1445,7 @@ if (evSel){
       company.contributionType = $$('#cContribution', root).value.trim();
       company.estimatedValueEUR = $$('#cEstimate', root).value.trim();
       company.notes = $$('#cNotes', root).value;
-company.eventId = $$('#cEvent', root)?.value || '';
-company.updatedAt = nowIso();
+      company.updatedAt = nowIso();
       await idbPut(STORES.companies, company);
 
       // Lost rule: auto create re-entry task in +90 days
@@ -1817,31 +1469,20 @@ company.updatedAt = nowIso();
       openCompanyModal(companyId);
     };
 
-$$('#btnDeleteCompany', root).onclick = async ()=>{
-  if (!confirm('Delete company and all related contacts/activities/tasks/attachments?')) return;
-
-  const allContacts = await idbGetAll(STORES.contacts);
-  const allActs = await idbGetAll(STORES.activities);
-  const allTasks = await idbGetAll(STORES.tasks);
-  const allAtts = await idbGetAll(STORES.attachments);
-
-  // delete attachments first (by company)
-  for (const att of allAtts.filter(x=>x.companyId===companyId)){
-    await idbDelete(STORES.attachments, att.id);
-  }
-
-  // delete children
-  for (const c of allContacts.filter(x=>x.companyId===companyId)) await idbDelete(STORES.contacts, c.id);
-  for (const a of allActs.filter(x=>x.companyId===companyId)) await idbDelete(STORES.activities, a.id);
-  for (const t of allTasks.filter(x=>x.companyId===companyId)) await idbDelete(STORES.tasks, t.id);
-
-  // delete company
-  await idbDelete(STORES.companies, companyId);
-
-  toast('Deleted company');
-  closeModal();
-  refreshAll();
-};
+    $$('#btnDeleteCompany', root).onclick = async ()=>{
+      if (!confirm('Delete company and all related contacts/activities/tasks?')) return;
+      // delete children
+      const allContacts = await idbGetAll(STORES.contacts);
+      const allActs = await idbGetAll(STORES.activities);
+      const allTasks = await idbGetAll(STORES.tasks);
+      for (const c of allContacts.filter(x=>x.companyId===companyId)) await idbDelete(STORES.contacts, c.id);
+      for (const a of allActs.filter(x=>x.companyId===companyId)) await idbDelete(STORES.activities, a.id);
+      for (const t of allTasks.filter(x=>x.companyId===companyId)) await idbDelete(STORES.tasks, t.id);
+      await idbDelete(STORES.companies, companyId);
+      toast('Deleted company');
+      closeModal();
+      refreshAll();
+    };
 
     // render contacts list
     const contactsWrap = $$('#contactsList', root);
@@ -1889,45 +1530,7 @@ $$('#btnDeleteCompany', root).onclick = async ()=>{
 
     // activities list
     const actsWrap = $$('#activitiesList', root);
-    actsWrap.innerHTML = renderActivitiesList(activities, contacts, attachments);
-actsWrap.addEventListener('click', async (e)=>{
-  // download attachment
-  const dl = e.target.closest('[data-dl-att]');
-  if (dl){
-    const attId = dl.getAttribute('data-dl-att');
-    await downloadAttachment(attId);
-    return;
-  }
-
-  // delete activity (and its attachments)
-  const del = e.target.closest('[data-del-act]');
-  if (del){
-    const actId = del.getAttribute('data-del-act');
-    if (!confirm('Delete this activity? (attachments linked to it will also be deleted)')) return;
-
-    // delete attachments belonging to this activity
-    const allAtts = await idbGetAll(STORES.attachments);
-    for (const a of allAtts.filter(x => x.activityId === actId)){
-      await idbDelete(STORES.attachments, a.id);
-    }
-
-    // delete activity
-    await idbDelete(STORES.activities, actId);
-
-    toast('Activity deleted');
-    openCompanyModal(companyId);
-    refreshAll();
-    return;
-  }
-
-  // edit activity
-  const edit = e.target.closest('[data-edit-act]');
-  if (edit){
-    const actId = edit.getAttribute('data-edit-act');
-    openEditActivityModal(companyId, actId);
-    return;
-  }
-});
+    actsWrap.innerHTML = renderActivitiesList(activities, contacts);
 
     $$('#btnAddActivity', root).onclick = ()=> openAddActivityModal(companyId);
 
@@ -1973,93 +1576,40 @@ function renderContactsEditor(contacts){
     html.push('<div class="muted">No contacts yet.</div>');
     return html.join('');
   }
-
-  html.push('<div class="contactCards">');
-
+  html.push('<table class="table"><thead><tr>');
+  html.push('<th>Name</th><th>Role</th><th>Email</th><th>Phone</th><th></th>');
+  html.push('</tr></thead><tbody>');
   for (const c of contacts){
-    html.push(`<div class="contactCard" data-contact-row="${c.id}">`);
-
-    // header
-    html.push('<div class="contactCardHd">');
-    html.push(`<strong>${escapeHtml(c.fullName || '(no name)')}</strong>`);
-    html.push(`<button class="miniBtn danger" data-del-contact="${c.id}">Delete</button>`);
-    html.push('</div>');
-
-    // body fields (vertical)
-    html.push('<div class="contactCardBd">');
-
-    html.push('<div class="field">');
-    html.push('<label>Name</label>');
-    html.push(`<input id="ctName_${c.id}" value="${escapeHtml(c.fullName||'')}" placeholder="name"/>`);
-    html.push('</div>');
-
-    html.push('<div class="field">');
-    html.push('<label>Role</label>');
-    html.push(`<input id="ctRole_${c.id}" value="${escapeHtml(c.roleText||'')}" placeholder="CSR / GM"/>`);
-    html.push('</div>');
-
-    html.push('<div class="field">');
-    html.push('<label>Email</label>');
-    html.push(`<input id="ctEmail_${c.id}" value="${escapeHtml(c.email||'')}" placeholder="email"/>`);
-    html.push('</div>');
-
-    html.push('<div class="field">');
-    html.push('<label>Phone</label>');
-    html.push(`<input id="ctPhone_${c.id}" value="${escapeHtml(c.phone||'')}" placeholder="phone"/>`);
-    html.push('</div>');
-
-    html.push('</div>'); // contactCardBd
-    html.push('</div>'); // contactCard
+    html.push(`<tr data-contact-row="${c.id}">`);
+    html.push(`<td><input id="ctName_${c.id}" value="${escapeHtml(c.fullName||'')}" placeholder="name"/></td>`);
+    html.push(`<td><input id="ctRole_${c.id}" value="${escapeHtml(c.roleText||'')}" placeholder="CSR / GM"/></td>`);
+    html.push(`<td><input id="ctEmail_${c.id}" value="${escapeHtml(c.email||'')}" placeholder="email"/></td>`);
+    html.push(`<td><input id="ctPhone_${c.id}" value="${escapeHtml(c.phone||'')}" placeholder="phone"/></td>`);
+    html.push(`<td><button class="miniBtn danger" data-del-contact="${c.id}">Delete</button></td>`);
+    html.push('</tr>');
   }
-
-  html.push('</div>'); // contactCards
+  html.push('</tbody></table>');
   return html.join('');
 }
 
-function renderActivitiesList(activities, contacts, attachments){
+function renderActivitiesList(activities, contacts){
   const contactMap = new Map(contacts.map(c=>[c.id, c]));
-const attByActivity = new Map();
-for (const a of (attachments || [])){
-  if (!attByActivity.has(a.activityId)) attByActivity.set(a.activityId, []);
-  attByActivity.get(a.activityId).push(a);
-}
   const html=[];
   if (!activities.length){
     html.push('<div class="muted">No activities yet. Add one to start generating reminders.</div>');
     return html.join('');
   }
-html.push('<table class="table"><thead><tr>');
-html.push('<th>Date</th><th>Type</th><th>Contact</th><th>Outcome</th><th>Attachments</th><th>Notes</th><th>Actions</th>');
+  html.push('<table class="table"><thead><tr>');
+  html.push('<th>Date</th><th>Type</th><th>Contact</th><th>Outcome</th><th>Notes</th>');
   html.push('</tr></thead><tbody>');
   for (const a of activities){
     const ct = a.contactId ? contactMap.get(a.contactId) : null;
     html.push('<tr>');
-html.push(`<td>${escapeHtml(a.dateTime ? a.dateTime.slice(0,16).replace('T',' ') : '')}</td>`);
-html.push(`<td>${escapeHtml(a.type||'')}</td>`);
-html.push(`<td class="muted">${escapeHtml(ct ? (ct.fullName||ct.email||'') : '')}</td>`);
-html.push(`<td>${escapeHtml(a.outcome||'')}</td>`);
-
-// attachments cell
-const atts = attByActivity.get(a.id) || [];
-if (!atts.length){
-  html.push(`<td class="muted">-</td>`);
-} else {
-  const chips = atts.map(x=>{
-    const label = (x.fileName || 'attachment');
-    return `<span class="chip">
-      ${escapeHtml(label)}
-      <button class="miniBtn" style="margin-left:6px;" data-dl-att="${x.id}">Download</button>
-    </span>`;
-  }).join(' ');
-  html.push(`<td>${chips}</td>`);
-}
-
-html.push(`<td class="muted">${escapeHtml((a.notes||'').slice(0,160))}${(a.notes||'').length>160?'…':''}</td>`);
-html.push(`<td>
-  <button class="miniBtn" data-edit-act="${a.id}">Edit</button>
-  <button class="miniBtn danger" data-del-act="${a.id}">Delete</button>
-</td>`);
-
+    html.push(`<td>${escapeHtml(a.dateTime ? a.dateTime.slice(0,16).replace('T',' ') : '')}</td>`);
+    html.push(`<td>${escapeHtml(a.type||'')}</td>`);
+    html.push(`<td class="muted">${escapeHtml(ct ? (ct.fullName||ct.email||'') : '')}</td>`);
+    html.push(`<td>${escapeHtml(a.outcome||'')}</td>`);
+    html.push(`<td class="muted">${escapeHtml((a.notes||'').slice(0,160))}${(a.notes||'').length>160?'…':''}</td>`);
     html.push('</tr>');
   }
   html.push('</tbody></table>');
@@ -2068,7 +1618,7 @@ html.push(`<td>
 
 function renderTasksList(tasks){
   const todayISO = toDateOnlyISO(new Date());
-  const open = tasks.filter(t=>t.status===TASK_STATUS.OPEN && !t.isDeleted).sort((a,b)=> (a.dueDate||'').localeCompare(b.dueDate||''));
+  const open = tasks.filter(t=>t.status===TASK_STATUS.OPEN).sort((a,b)=> (a.dueDate||'').localeCompare(b.dueDate||''));
   const done = tasks.filter(t=>t.status===TASK_STATUS.DONE).sort((a,b)=> (b.updatedAt||'').localeCompare(a.updatedAt||''));
   const html=[];
   html.push('<div class="muted">Open tasks</div>');
@@ -2102,164 +1652,8 @@ function renderTasksList(tasks){
 }
 
 /* ==========================================================
-   [ANCHOR:EDIT_ACTIVITY_MODAL]
+   [ANCHOR:ADD_ACTIVITY_MODAL]
    ========================================================== */
-async function openEditActivityModal(companyId, activityId){
-  const company = await idbGet(STORES.companies, companyId);
-  const contacts = (await idbGetAll(STORES.contacts)).filter(c=>c.companyId===companyId);
-  const act = await idbGet(STORES.activities, activityId);
-  if (!act) { alert('Activity not found'); return; }
-
-  const modalHtml = `
-    <div class="mh">
-      <strong>Edit activity - ${escapeHtml(company?.name||'')}</strong>
-      <button class="miniBtn" id="btnClose">Close</button>
-    </div>
-    <div class="mb">
-      <div class="row">
-        <div class="field">
-          <label>Type</label>
-          <select id="aType"></select>
-        </div>
-        <div class="field">
-          <label>Contact (optional)</label>
-          <select id="aContact">
-            <option value="">(none)</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Date/time</label>
-          <input id="aDt" type="datetime-local" />
-        </div>
-      </div>
-
-      <div class="row">
-        <div class="field">
-          <label>Outcome (short)</label>
-          <input id="aOutcome" placeholder="ex: no reply / meeting set / sent docs..." />
-        </div>
-      </div>
-
-      <div class="row" id="contractFields" style="display:none;">
-        <div class="field" style="max-width:240px;">
-          <label>Contract type</label>
-          <select id="aContractType">
-            <option value=""></option>
-            <option value="Sponsorizare">Sponsorizare</option>
-            <option value="Prestari servicii">Prestari servicii</option>
-          </select>
-        </div>
-        <div class="field" style="max-width:240px;">
-          <label>Amount EUR (optional)</label>
-          <input id="aAmountEUR" type="number" step="0.01" placeholder="ex: 5000" />
-        </div>
-      </div>
-
-      <div class="field">
-        <label>Notes</label>
-        <textarea id="aNotes"></textarea>
-      </div>
-
-      <div class="field">
-        <label>Add attachments (optional)</label>
-        <input id="aFiles" type="file" multiple />
-        <div class="muted">Existing attachments remain; you can only add more here.</div>
-      </div>
-
-      <div class="sep"></div>
-      <div class="row">
-        <button class="btn primary" id="btnSaveAct">Save changes</button>
-      </div>
-      <div class="muted">
-        Note: Editing an activity does not auto-rebuild tasks. Manage tasks separately in Tasks list.
-      </div>
-    </div>
-  `;
-
-  openModal(modalHtml, (root)=>{
-    $$('#btnClose', root).onclick = closeModal;
-
-    // fill type
-    const selType = $$('#aType', root);
-    for (const t of ACT_TYPES){
-      const opt = document.createElement('option');
-      opt.value = t; opt.textContent = t;
-      selType.appendChild(opt);
-    }
-    selType.value = act.type || 'Prim Contact (email/call/other)';
-
-    // fill contacts
-    const selC = $$('#aContact', root);
-    for (const c of contacts){
-      const opt = document.createElement('option');
-      opt.value = c.id;
-      opt.textContent = (c.fullName || c.email || '(contact)');
-      selC.appendChild(opt);
-    }
-    selC.value = act.contactId || '';
-
-    // datetime-local needs local value; we convert from ISO
-    const d = act.dateTime ? new Date(act.dateTime) : new Date();
-    const pad=(n)=>String(n).padStart(2,'0');
-    const localVal = d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
-    $$('#aDt', root).value = localVal;
-
-    // other fields
-    $$('#aOutcome', root).value = act.outcome || '';
-    $$('#aNotes', root).value = act.notes || '';
-
-    // contract fields toggle
-    const contractFields = $$('#contractFields', root);
-    const toggleContractFields = ()=>{
-      const isSigned = (selType.value === 'Contract signed');
-      if (contractFields) contractFields.style.display = isSigned ? '' : 'none';
-    };
-    selType.addEventListener('change', toggleContractFields);
-    toggleContractFields();
-
-    $$('#aContractType', root).value = act.contractType || '';
-    $$('#aAmountEUR', root).value = act.amountEUR || '';
-
-    // save
-    $$('#btnSaveAct', root).onclick = async ()=>{
-      const dtLocal = $$('#aDt', root).value;
-      if (!dtLocal){ alert('Date/time required'); return; }
-
-      // update fields
-      act.type = selType.value;
-      act.contactId = selC.value || '';
-      act.dateTime = new Date(dtLocal).toISOString();
-      act.outcome = $$('#aOutcome', root).value.trim();
-      act.notes = $$('#aNotes', root).value;
-
-      act.contractType = ($$('#aContractType', root)?.value || '');
-      act.amountEUR = ($$('#aAmountEUR', root)?.value || '');
-
-      // append_attach
-      const filesEl = $$('#aFiles', root);
-      const files = filesEl ? Array.from(filesEl.files || []) : [];
-      if (files.length){
-        const existing = Array.isArray(act.attachmentIds) ? act.attachmentIds.slice() : [];
-        for (const f of files){
-          const attId = await saveAttachmentBlob({companyId, activityId: act.id, file: f});
-          existing.push(attId);
-        }
-        act.attachmentIds = existing;
-      } else {
-        act.attachmentIds = Array.isArray(act.attachmentIds) ? act.attachmentIds : [];
-      }
-
-      act.updatedAt = nowIso();
-      await idbPut(STORES.activities, act);
-
-      toast('Activity updated');
-      closeModal();
-      openCompanyModal(companyId);
-      refreshAll();
-    };
-  });
-}
-
 async function openAddActivityModal(companyId){
   const company = await idbGet(STORES.companies, companyId);
   const contacts = (await idbGetAll(STORES.contacts)).filter(c=>c.companyId===companyId);
@@ -2287,40 +1681,17 @@ async function openAddActivityModal(companyId){
         </div>
       </div>
 
-<div class="row">
-  <div class="field">
-    <label>Outcome (short)</label>
-    <input id="aOutcome" placeholder="ex: no reply / meeting set / sent docs..." />
-  </div>
-</div>
+      <div class="row">
+        <div class="field">
+          <label>Outcome (short)</label>
+          <input id="aOutcome" placeholder="ex: no reply / meeting set / sent docs..." />
+        </div>
+      </div>
 
-<!-- PATCH 4.2.1 START -->
-<div class="row" id="contractFields" style="display:none;">
-  <div class="field" style="max-width:240px;">
-    <label>Contract type</label>
-    <select id="aContractType">
-      <option value=""></option>
-      <option value="Sponsorizare">Sponsorizare</option>
-      <option value="Prestari servicii">Prestari servicii</option>
-    </select>
-  </div>
-  <div class="field" style="max-width:240px;">
-    <label>Amount EUR (optional)</label>
-    <input id="aAmountEUR" type="number" step="0.01" placeholder="ex: 5000" />
-  </div>
-</div>
-<!-- PATCH 4.2.1 END -->
-
-<div class="field">
-  <label>Notes</label>
-  <textarea id="aNotes"></textarea>
-</div>
-
-<div class="field">
-  <label>Attachments (stored offline in this browser)</label>
-  <input id="aFiles" type="file" multiple />
-  <div class="muted">Tip: keep files reasonable in size. Attachments are stored in IndexedDB (browser storage).</div>
-</div>
+      <div class="field">
+        <label>Notes</label>
+        <textarea id="aNotes"></textarea>
+      </div>
 
       <div class="row">
         <label class="chip"><input type="checkbox" id="aCreateFu" style="width:auto; margin-right:8px;">Create follow-up task</label>
@@ -2348,14 +1719,6 @@ async function openAddActivityModal(companyId){
       selType.appendChild(opt);
     }
     selType.value = 'Prim Contact (email/call/other)';
-
-    const contractFields = $$('#contractFields', root);
-    const toggleContractFields = ()=>{
-      const isSigned = (selType.value === 'Contract signed');
-      if (contractFields) contractFields.style.display = isSigned ? '' : 'none';
-    };
-    selType.addEventListener('change', toggleContractFields);
-    toggleContractFields();
 
     // fill contacts
     const selC = $$('#aContact', root);
@@ -2386,44 +1749,16 @@ async function openAddActivityModal(companyId){
       const createFu = $$('#aCreateFu', root).checked;
       const fuDate = $$('#aFuDate', root).value || '';
 
-// create activity id first, then attach files referencing it
-const newActId = uid();
-
-// 1) save activity first (without attachments), so task engine can run
-await addActivity({
-  companyId,
-  contactId,
-  type,
-  dateTimeISO: iso,
-  outcome: $$('#aOutcome', root).value.trim(),
-  notes: $$('#aNotes', root).value,
-  createFollowUp: createFu,
-  followUpDueDateISO: fuDate,
-
-  // contract signed extras
-  contractType: ($$('#aContractType', root)?.value || ''),
-  amountEUR: ($$('#aAmountEUR', root)?.value || ''),
-
-  attachmentIds: [],
-  idOverride: newActId
-});
-
-// 2) save attachments (if any), then patch activity with attachmentIds
-const filesEl = $$('#aFiles', root);
-const files = filesEl ? Array.from(filesEl.files || []) : [];
-if (files.length){
-  const attachmentIds = [];
-  for (const f of files){
-    const attId = await saveAttachmentBlob({companyId, activityId: newActId, file: f});
-    attachmentIds.push(attId);
-  }
-  const act = await idbGet(STORES.activities, newActId);
-  if (act){
-    act.attachmentIds = attachmentIds;
-    act.updatedAt = nowIso();
-    await idbPut(STORES.activities, act);
-  }
-}
+      await addActivity({
+        companyId,
+        contactId,
+        type,
+        dateTimeISO: iso,
+        outcome: $$('#aOutcome', root).value.trim(),
+        notes: $$('#aNotes', root).value,
+        createFollowUp: createFu,
+        followUpDueDateISO: fuDate
+      });
 
       toast('Activity saved');
       closeModal();
@@ -2470,7 +1805,7 @@ function toXlsHtml(tableTitle, rows, headers){
    [ANCHOR:REFRESH_ALL]
    ========================================================== */
 async function refreshAll(){
-  if (!db) return;
+  if (!USE_REMOTE && !db) return;
 
   // today badge
   $$('#todayDateBadge').textContent = toDateOnlyISO(new Date());
@@ -2486,7 +1821,7 @@ async function refreshAll(){
 
   // KPIs
   const todayISO = toDateOnlyISO(new Date());
-  const openTasks = tasks.filter(t=>t.status===TASK_STATUS.OPEN && !t.isDeleted);
+  const openTasks = tasks.filter(t=>t.status===TASK_STATUS.OPEN);
   const overdue = openTasks.filter(t=>t.dueDate < todayISO);
   const dueToday = openTasks.filter(t=>t.dueDate === todayISO);
 
@@ -2511,12 +1846,6 @@ async function refreshAll(){
   if (!$$('#view-events').classList.contains('hidden')){
     renderEventsTable(events);
   }
-
-if (!$$('#view-reports').classList.contains('hidden')){
-  await renderContractsReport();
-  await renderEventsReport();
-  await renderEventPipelineReport();
-}
 
   // counts
   $$('#companiesCount').textContent = String(companies.length);
@@ -2567,72 +1896,6 @@ function bindDynamicHandlers(){
       if (!newDue) return;
       await snoozeTask(id, newDue);
       toast('Task snoozed');
-      refreshAll();
-    };
-  });
-
-$$$('[data-del-task]').forEach(btn=>{
-  btn.onclick = async ()=>{
-    const id = btn.getAttribute('data-del-task');
-
-    const t = await idbGet(STORES.tasks, id);
-    if (!t) return;
-
-    // optional reason
-    let reason = prompt('Reason for deleting this task? (optional)', '');
-    if (reason === null) reason = ''; // user pressed Cancel -> treat as empty
-    reason = String(reason || '').trim();
-
-    if (!confirm('Delete this task? You will have a short Undo window.')) return;
-
-    // snapshot for undo
-    __undoTaskSnapshot = JSON.parse(JSON.stringify(t));
-    if (__undoTaskTimer) clearTimeout(__undoTaskTimer);
-
-    // soft delete
-    t.isDeleted = true;
-    t.deletedAt = nowIso();
-    t.deletedReason = reason;
-    t.updatedAt = nowIso();
-    await idbPut(STORES.tasks, t);
-
-    toast(
-      'Task deleted',
-      'Undo',
-      async ()=>{
-        if (!__undoTaskSnapshot) return;
-        const restore = __undoTaskSnapshot;
-        restore.isDeleted = false;
-        restore.deletedAt = '';
-        restore.deletedReason = '';
-        restore.updatedAt = nowIso();
-        await idbPut(STORES.tasks, restore);
-        __undoTaskSnapshot = null;
-        toast('Task restored');
-        refreshAll();
-      },
-      6500
-    );
-
-    __undoTaskTimer = setTimeout(()=>{ __undoTaskSnapshot = null; }, 6500);
-
-    refreshAll();
-  };
-});
-
-  // Prim Contact: create next +10d
-  $$$('[data-next-prim]').forEach(btn=>{
-    btn.onclick = async ()=>{
-      const id = btn.getAttribute('data-next-prim');
-      const res = await createSecondPrimContactTaskFromFirstTask(id);
-      if (!res.ok){
-        const why = res.reason || 'unknown';
-        toast('Cannot create next: ' + why);
-        return;
-      }
-      const primCadence = await getSetting('primCadence', [5,10]);
-const secondDays = Number(primCadence[1] || 10);
-toast('Created next reminder (+' + secondDays + 'd)');
       refreshAll();
     };
   });
@@ -2705,29 +1968,6 @@ $$('#btnImport').onclick = async ()=>{
   }
 };
 
-const legacyBtn = $$('#btnCreateLegacyTasks');
-if (legacyBtn){
-  legacyBtn.onclick = async ()=>{
-    try{
-      legacyBtn.disabled = true;
-
-      const res = await bulkCreateInitialTasksFromLegacyFlags();
-      const msg = `Done. Created: ${res.created}. Skipped (already had tasks): ${res.skippedExisting}. Skipped (no flags): ${res.skippedNoFlags}. Total companies: ${res.totalCompanies}.`;
-      const out = $$('#legacyTasksResult');
-      if (out) out.textContent = msg;
-
-      toast('Initial tasks created');
-      await refreshAll();
-      showTab('today');
-    } catch (err){
-      console.error(err);
-      alert('Failed: ' + (err.message || err));
-    } finally{
-      legacyBtn.disabled = false;
-    }
-  };
-}
-
 $$('#btnBackupJson').onclick = backupJson;
 $$('#btnBackupJson2').onclick = backupJson;
 
@@ -2745,57 +1985,21 @@ async function backupJson(){
   downloadText('fundraising_backup.json', JSON.stringify(payload, null, 2), 'application/json;charset=utf-8');
 }
 
-// Micro-upgrade: single ICS export based on Today filter
-const btnIcsFiltered = $$('#btnExportIcsFiltered');
-if (btnIcsFiltered){
-  btnIcsFiltered.onclick = async ()=>{
-    const tasks = await idbGetAll(STORES.tasks);
-
-    const today = new Date();
-    const todayISO = toDateOnlyISO(today);
-
-    const end = new Date(today);
-    end.setDate(end.getDate() + 7);
-    const endISO = toDateOnlyISO(end);
-
-    // read Today filter (default to 'all' if missing)
-    const filterEl = $$('#taskFilter');
-    const filter = filterEl ? filterEl.value : 'all';
-
-    let selected = tasks.filter(t => t.status === TASK_STATUS.OPEN && !t.isDeleted);
-
-    if (filter === 'today'){
-      selected = selected.filter(t => t.dueDate === todayISO);
-    } else if (filter === 'overdue'){
-      selected = selected.filter(t => t.dueDate < todayISO);
-    } else if (filter === 'week'){
-      selected = selected.filter(t => t.dueDate >= todayISO && t.dueDate <= endISO);
-    } // else 'all' -> keep as is
-
-    if (!selected.length){
-      const msg =
-        (filter === 'today') ? 'No open tasks due today.' :
-        (filter === 'overdue') ? 'No overdue open tasks.' :
-        (filter === 'week') ? 'No open tasks in the next 7 days.' :
-        'No open tasks.';
-      alert(msg);
-      return;
-    }
-
-    const label =
-      (filter === 'today') ? `today_${todayISO}` :
-      (filter === 'overdue') ? `overdue_asof_${todayISO}` :
-      (filter === 'week') ? `next7days_${todayISO}_to_${endISO}` :
-      `all_open_${todayISO}`;
-
-    await exportIcsForTasks(selected, `reminders_${label}.ics`);
-  };
-}
+$$('#btnExportIcsToday').onclick = async ()=>{
+  const tasks = await idbGetAll(STORES.tasks);
+  const todayISO = toDateOnlyISO(new Date());
+  const dueToday = tasks.filter(t=>t.status===TASK_STATUS.OPEN && t.dueDate===todayISO);
+  if (!dueToday.length){
+    alert('No open tasks due today.');
+    return;
+  }
+  await exportIcsForTasks(dueToday, `reminders_today_${todayISO}.ics`);
+};
 
 $$('#btnMarkAllDueTodayDone').onclick = async ()=>{
   const tasks = await idbGetAll(STORES.tasks);
   const todayISO = toDateOnlyISO(new Date());
-  const dueToday = tasks.filter(t=>t.status===TASK_STATUS.OPEN && !t.isDeleted && t.dueDate===todayISO);
+  const dueToday = tasks.filter(t=>t.status===TASK_STATUS.OPEN && t.dueDate===todayISO);
   if (!dueToday.length){ toast('Nothing due today'); return; }
   if (!confirm('Mark ALL tasks due today as Done?')) return;
   for (const t of dueToday) await markTaskDone(t.id);
@@ -2882,253 +2086,6 @@ $$('#btnRunNoReply').onclick = async ()=>{
   $$('#reportNoReply').innerHTML = html.join('');
 };
 
-async function renderContractsReport(){
-  const acts = await idbGetAll(STORES.activities);
-
-  const signed = acts.filter(a => a.type === 'Contract signed');
-  if (!signed.length){
-    $$('#reportContracts').innerHTML = '<div class="muted">No "Contract signed" activities yet.</div>';
-    return;
-  }
-
-  const buckets = {
-    'Sponsorizare': {count:0, sum:0},
-    'Prestari servicii': {count:0, sum:0},
-    '(blank)': {count:0, sum:0}
-  };
-
-  for (const a of signed){
-    const k = a.contractType || '(blank)';
-    const amt = Number(String(a.amountEUR || '').replace(',', '.')) || 0;
-    if (!buckets[k]) buckets[k] = {count:0, sum:0};
-    buckets[k].count += 1;
-    buckets[k].sum += amt;
-  }
-
-  const rows = Object.entries(buckets)
-    .filter(([_,v]) => v.count > 0)
-    .map(([k,v]) => ({type:k, count:v.count, sum:v.sum}));
-
-  const html = [];
-  html.push('<table class="table"><thead><tr><th>Contract type</th><th>Count</th><th>Sum EUR (optional)</th></tr></thead><tbody>');
-  for (const r of rows){
-    html.push(`<tr>
-      <td>${escapeHtml(r.type)}</td>
-      <td>${escapeHtml(String(r.count))}</td>
-      <td class="muted">${escapeHtml(r.sum ? r.sum.toFixed(2) : '-')}</td>
-    </tr>`);
-  }
-  html.push('</tbody></table>');
-  $$('#reportContracts').innerHTML = html.join('');
-}
-
-const btnExpEv = $$('#btnExportEventReportCsv');
-if (btnExpEv){
-  btnExpEv.onclick = async ()=>{
-    if (!window.__lastEventReportRows) await renderEventsReport();
-    const rows = window.__lastEventReportRows || [];
-    const headers = ['eventName','startDate','linkedCount','contractsCount','conversionPct','estimatedSum','closedSum'];
-    const flat = rows.map(r=>({
-      eventName: r.eventName,
-      startDate: r.startDate,
-      linkedCount: r.linkedCount,
-      contractsCount: r.contractsCount,
-      conversionPct: Number(r.conversionPct.toFixed(1)),
-      estimatedSum: Number((r.estimatedSum||0).toFixed(2)),
-      closedSum: Number((r.closedSum||0).toFixed(2))
-    }));
-    downloadText('report_events.csv', toCsv(flat, headers), 'text/csv;charset=utf-8');
-  };
-}
-
-const btnExpEvPipe = $$('#btnExportEventPipelineCsv');
-if (btnExpEvPipe){
-  btnExpEvPipe.onclick = async ()=>{
-    if (!window.__lastEventPipelineRows) await renderEventPipelineReport();
-    const rows = window.__lastEventPipelineRows || [];
-
-    const headers = [
-      'eventName','startDate','linkedTotal',
-      'Prospect','Contactat','In discutii','Propunere trimisa','Negociere','Castigat','Pierdut','Nurture',
-      'activeConversionPct','winRatePct'
-    ];
-
-    const flat = rows.map(r=>({
-      eventName: r.eventName,
-      startDate: r.startDate,
-      linkedTotal: r.linkedTotal,
-      Prospect: r.Prospect,
-      Contactat: r.Contactat,
-      'In discutii': r['In discutii'],
-      'Propunere trimisa': r['Propunere trimisa'],
-      Negociere: r.Negociere,
-      Castigat: r.Castigat,
-      Pierdut: r.Pierdut,
-      Nurture: r.Nurture,
-      activeConversionPct: Number(r.activeConversionPct.toFixed(1)),
-      winRatePct: Number(r.winRatePct.toFixed(1))
-    }));
-
-    downloadText('report_event_pipeline.csv', toCsv(flat, headers), 'text/csv;charset=utf-8');
-  };
-}
-
-async function renderEventPipelineReport(){
-  const events = await idbGetAll(STORES.events);
-  const companies = await idbGetAll(STORES.companies);
-
-  if (!events.length){
-    $$('#reportEventPipeline').innerHTML = '<div class="muted">No events yet.</div>';
-    window.__lastEventPipelineRows = [];
-    return;
-  }
-
-  const STAGES = ['Prospect','Contactat','In discutii','Propunere trimisa','Negociere','Castigat','Pierdut','Nurture'];
-
-  const rows = [];
-  for (const e of events){
-    const linked = companies.filter(c => (c.eventId || '') === e.id);
-    const total = linked.length;
-
-    const counts = Object.fromEntries(STAGES.map(s=>[s,0]));
-    for (const c of linked){
-      const s = c.pipelineStatus || 'Prospect';
-      if (!counts.hasOwnProperty(s)) counts['Prospect'] += 1;
-      else counts[s] += 1;
-    }
-
-    const won = counts['Castigat'] || 0;
-    const active = (counts['In discutii']||0) + (counts['Propunere trimisa']||0) + (counts['Negociere']||0) + (counts['Castigat']||0);
-
-    rows.push({
-      eventName: e.name,
-      startDate: e.startDate || '',
-      linkedTotal: total,
-      Prospect: counts['Prospect'],
-      Contactat: counts['Contactat'],
-      'In discutii': counts['In discutii'],
-      'Propunere trimisa': counts['Propunere trimisa'],
-      Negociere: counts['Negociere'],
-      Castigat: counts['Castigat'],
-      Pierdut: counts['Pierdut'],
-      Nurture: counts['Nurture'],
-      activeConversionPct: total ? (active/total*100) : 0,
-      winRatePct: total ? (won/total*100) : 0
-    });
-  }
-
-  rows.sort((a,b)=> (a.startDate||'').localeCompare(b.startDate||'') || (b.linkedTotal - a.linkedTotal));
-
-  const html = [];
-  html.push('<table class="table"><thead><tr>');
-  html.push('<th>Event</th><th>Start</th><th>Total</th>');
-  html.push('<th>Prospect</th><th>Contactat</th><th>In discutii</th><th>Propunere</th><th>Negociere</th><th>Castigat</th><th>Pierdut</th><th>Nurture</th>');
-  html.push('<th>Active conv.</th><th>Win rate</th>');
-  html.push('</tr></thead><tbody>');
-
-  for (const r of rows){
-    html.push(`<tr>
-      <td>${escapeHtml(r.eventName)}</td>
-      <td class="muted">${escapeHtml(r.startDate)}</td>
-      <td>${escapeHtml(String(r.linkedTotal))}</td>
-      <td>${escapeHtml(String(r.Prospect))}</td>
-      <td>${escapeHtml(String(r.Contactat))}</td>
-      <td>${escapeHtml(String(r['In discutii']))}</td>
-      <td>${escapeHtml(String(r['Propunere trimisa']))}</td>
-      <td>${escapeHtml(String(r.Negociere))}</td>
-      <td>${escapeHtml(String(r.Castigat))}</td>
-      <td>${escapeHtml(String(r.Pierdut))}</td>
-      <td>${escapeHtml(String(r.Nurture))}</td>
-      <td class="muted">${escapeHtml(r.activeConversionPct.toFixed(1) + '%')}</td>
-      <td class="muted">${escapeHtml(r.winRatePct.toFixed(1) + '%')}</td>
-    </tr>`);
-  }
-
-  html.push('</tbody></table>');
-  $$('#reportEventPipeline').innerHTML = html.join('');
-
-  window.__lastEventPipelineRows = rows;
-}
-
-async function renderEventsReport(){
-  const events = await idbGetAll(STORES.events);
-  const companies = await idbGetAll(STORES.companies);
-  const acts = await idbGetAll(STORES.activities);
-
-  if (!events.length){
-    $$('#reportEvents').innerHTML = '<div class="muted">No events yet.</div>';
-    return;
-  }
-
-  // Map contract signed amounts by company
-  const signedActs = acts.filter(a => a.type === 'Contract signed');
-  const signedByCompany = new Map(); // companyId -> {count, sum}
-  for (const a of signedActs){
-    const amt = Number(String(a.amountEUR || '').replace(',', '.')) || 0;
-    const prev = signedByCompany.get(a.companyId) || {count:0, sum:0};
-    prev.count += 1;
-    prev.sum += amt;
-    signedByCompany.set(a.companyId, prev);
-  }
-
-  // Build rows per event
-  const rows = [];
-  for (const e of events){
-    const linked = companies.filter(c => (c.eventId || '') === e.id);
-    const linkedCount = linked.length;
-
-    let contractsCount = 0;
-    let closedSum = 0;
-    let estimatedSum = 0;
-
-    for (const c of linked){
-      const est = Number(String(c.estimatedValueEUR || '').replace(',', '.')) || 0;
-      estimatedSum += est;
-
-      const s = signedByCompany.get(c.id);
-      if (s){
-        contractsCount += s.count;     // if you sign multiple contracts per company, this counts them
-        closedSum += s.sum;
-      }
-    }
-
-    const conversion = linkedCount ? (contractsCount / linkedCount) : 0;
-
-    rows.push({
-      eventName: e.name,
-      startDate: e.startDate || '',
-      linkedCount,
-      contractsCount,
-      conversionPct: (conversion*100),
-      estimatedSum,
-      closedSum
-    });
-  }
-
-  rows.sort((a,b)=> (a.startDate||'').localeCompare(b.startDate||'') || (b.closedSum - a.closedSum));
-
-  const html = [];
-  html.push('<table class="table"><thead><tr>');
-  html.push('<th>Event</th><th>Start</th><th>Linked companies</th><th>Contracts signed</th><th>Conversion</th><th>Estimated EUR</th><th>Closed EUR</th>');
-  html.push('</tr></thead><tbody>');
-  for (const r of rows){
-    html.push(`<tr>
-      <td>${escapeHtml(r.eventName)}</td>
-      <td class="muted">${escapeHtml(r.startDate)}</td>
-      <td>${escapeHtml(String(r.linkedCount))}</td>
-      <td>${escapeHtml(String(r.contractsCount))}</td>
-      <td class="muted">${escapeHtml(r.conversionPct.toFixed(1) + '%')}</td>
-      <td class="muted">${escapeHtml(r.estimatedSum ? r.estimatedSum.toFixed(2) : '-')}</td>
-      <td class="muted">${escapeHtml(r.closedSum ? r.closedSum.toFixed(2) : '-')}</td>
-    </tr>`);
-  }
-  html.push('</tbody></table>');
-  $$('#reportEvents').innerHTML = html.join('');
-
-  // store last computed for CSV export
-  window.__lastEventReportRows = rows;
-}
-
 // Settings save
 $$('#btnSaveSettings').onclick = async ()=>{
   const primRaw = safeStr($$('#setPrimCadence').value);
@@ -3156,29 +2113,14 @@ $$('#btnNukeDb').onclick = async ()=>{
 // Exports
 $$('#btnExportCompaniesCsv').onclick = async ()=>{
   const companies = await idbGetAll(STORES.companies);
-  const events = await idbGetAll(STORES.events);
-  const evMap = new Map(events.map(e => [e.id, e.name]));
-
-  const headers = ['name','pipelineStatus','priority','introducedBy','contributionType','estimatedValueEUR','eventName','nextStepText','notes','rawStatusText','createdAt','updatedAt'];
-
+  const headers = ['name','pipelineStatus','priority','introducedBy','contributionType','estimatedValueEUR','nextStepText','notes','rawStatusText','createdAt','updatedAt'];
   const rows = companies.map(c=>({
-    name: c.name,
-    pipelineStatus: c.pipelineStatus,
-    priority: c.priority,
-    introducedBy: c.introducedBy,
-    contributionType: c.contributionType,
-    estimatedValueEUR: c.estimatedValueEUR,
-    eventName: evMap.get(c.eventId || '') || '',
-    nextStepText: c.nextStepText,
-    notes: c.notes,
-    rawStatusText: c.rawStatusText,
-    createdAt: c.createdAt,
-    updatedAt: c.updatedAt
+    name:c.name, pipelineStatus:c.pipelineStatus, priority:c.priority, introducedBy:c.introducedBy,
+    contributionType:c.contributionType, estimatedValueEUR:c.estimatedValueEUR,
+    nextStepText:c.nextStepText, notes:c.notes, rawStatusText:c.rawStatusText, createdAt:c.createdAt, updatedAt:c.updatedAt
   }));
-
   downloadText('companies.csv', toCsv(rows, headers), 'text/csv;charset=utf-8');
 };
-
 $$('#btnExportContactsCsv').onclick = async ()=>{
   const contacts = await idbGetAll(STORES.contacts);
   const companies = await idbGetAll(STORES.companies);
@@ -3190,39 +2132,19 @@ $$('#btnExportContactsCsv').onclick = async ()=>{
   }));
   downloadText('contacts.csv', toCsv(rows, headers), 'text/csv;charset=utf-8');
 };
-
 $$('#btnExportActivitiesCsv').onclick = async ()=>{
   const acts = await idbGetAll(STORES.activities);
   const companies = await idbGetAll(STORES.companies);
   const cmap = new Map(companies.map(c=>[c.id,c.name]));
-
-  const headers = [
-    'company','type','dateTime','outcome',
-    'contractType','amountEUR',
-    'attachmentCount',
-    'notes',
-    'createFollowUp','followUpDueDate',
-    'createdAt','updatedAt'
-  ];
-
+  const headers = ['company','type','dateTime','outcome','notes','createFollowUp','followUpDueDate','createdAt'];
   const rows = acts.map(a=>({
     company: cmap.get(a.companyId) || '',
-    type: a.type,
-    dateTime: a.dateTime,
-    outcome: a.outcome,
-    contractType: a.contractType || '',
-    amountEUR: a.amountEUR || '',
-    attachmentCount: Array.isArray(a.attachmentIds) ? a.attachmentIds.length : 0,
-    notes: a.notes,
-    createFollowUp: a.createFollowUp ? 'true':'false',
-    followUpDueDate: a.followUpDueDate || '',
-    createdAt: a.createdAt || '',
-    updatedAt: a.updatedAt || ''
+    type:a.type, dateTime:a.dateTime, outcome:a.outcome, notes:a.notes,
+    createFollowUp: a.createFollowUp ? 'true':'false', followUpDueDate:a.followUpDueDate,
+    createdAt: a.createdAt
   }));
-
   downloadText('activities.csv', toCsv(rows, headers), 'text/csv;charset=utf-8');
 };
-
 $$('#btnExportTasksCsv').onclick = async ()=>{
   const tasks = await idbGetAll(STORES.tasks);
   const companies = await idbGetAll(STORES.companies);
@@ -3238,26 +2160,14 @@ $$('#btnExportTasksCsv').onclick = async ()=>{
 
 $$('#btnExportCompaniesXls').onclick = async ()=>{
   const companies = await idbGetAll(STORES.companies);
-  const events = await idbGetAll(STORES.events);
-  const evMap = new Map(events.map(e => [e.id, e.name]));
-
-  const headers = ['name','pipelineStatus','priority','introducedBy','contributionType','estimatedValueEUR','eventName','nextStepText','notes'];
-
+  const headers = ['name','pipelineStatus','priority','introducedBy','contributionType','estimatedValueEUR','nextStepText','notes'];
   const rows = companies.map(c=>({
-    name: c.name,
-    pipelineStatus: c.pipelineStatus,
-    priority: c.priority,
-    introducedBy: c.introducedBy,
-    contributionType: c.contributionType,
-    estimatedValueEUR: c.estimatedValueEUR,
-    eventName: evMap.get(c.eventId || '') || '',
-    nextStepText: c.nextStepText,
-    notes: c.notes
+    name:c.name, pipelineStatus:c.pipelineStatus, priority:c.priority, introducedBy:c.introducedBy,
+    contributionType:c.contributionType, estimatedValueEUR:c.estimatedValueEUR,
+    nextStepText:c.nextStepText, notes:c.notes
   }));
-
   downloadText('companies.xls', toXlsHtml('Companies', rows, headers), 'application/vnd.ms-excel;charset=utf-8');
 };
-
 $$('#btnExportContactsXls').onclick = async ()=>{
   const contacts = await idbGetAll(STORES.contacts);
   const companies = await idbGetAll(STORES.companies);
@@ -3274,7 +2184,11 @@ $$('#btnExportContactsXls').onclick = async ()=>{
    [ANCHOR:BOOT]
    ========================================================== */
 (async function init(){
-  db = await openDb();
+  if (!USE_REMOTE){
+    db = await openDb();
+  } else {
+    db = null; // nu folosim IndexedDB pentru entitatile remote
+  }
   await ensureDefaults();
 
   // load settings into UI
