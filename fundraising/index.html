@@ -763,9 +763,12 @@ function idbPut(storeName, value){
 }
 
 function idbAdd(storeName, value){
-  // pentru remote: nu exista diferenta reala intre add si upsert (creaza daca nu exista)
   if (USE_REMOTE && REMOTE_STORES.has(storeName)){
-    return remoteUpsert(storeName, value).then(()=>true);
+    value = ensureId(value);
+    return remoteUpsert(storeName, value).then((rid)=>{
+      if (rid && value && !value.id) value.id = rid;
+      return true;
+    });
   }
   return new Promise((resolve, reject)=>{
     const s = tx(storeName, 'readwrite');
