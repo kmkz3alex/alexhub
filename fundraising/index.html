@@ -750,6 +750,12 @@ function tx(storeName, mode='readonly'){
   return t.objectStore(storeName);
 }
 
+  function ensureId(value){
+  if (value && typeof value === 'object' && !value.id){
+    value.id = uid();
+  }
+  return value;
+}
 function idbPut(storeName, value){
   if (USE_REMOTE && REMOTE_STORES.has(storeName)){
     return remoteUpsert(storeName, value).then(()=>true);
