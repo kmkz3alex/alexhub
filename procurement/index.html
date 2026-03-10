@@ -133,6 +133,65 @@ button.danger:active {
 .pill-info { background: var(--pill-info); color: #cfe8ff; }
 .pill-ok { background: var(--pill-ok); color: #bbf7d0; }
 
+/* --- Order Editor: Notes panel (chat-like) --- */
+.order-top-grid{
+  display:flex;
+  gap: 12px;
+  align-items:flex-start;
+}
+.order-top-left{
+  flex: 1 1 auto;
+  min-width: 520px;
+}
+.order-notes{
+  flex: 0 0 360px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  background: #0b1220;
+}
+.order-notes h4{
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+.order-notes .notes-list{
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  background: rgba(255,255,255,0.02);
+  margin-bottom: 8px;
+}
+.order-notes .note-line{
+  font-size: 12px;
+  margin: 0 0 6px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.order-notes .note-ts{
+  color: var(--muted);
+  margin-right: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.order-notes .note-input{
+  width: 100%;
+  box-sizing: border-box;
+  background: #ffffff;
+  color: #111;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+.order-notes .note-actions{
+  display:flex;
+  gap: 8px;
+  justify-content:flex-end;
+  margin-top: 8px;
+}
+
 /* --- Orders table: PO (Order No.) pills + popover --- */
 .po-cell{
   position: relative;
@@ -879,8 +938,10 @@ function preserveFocus(reRenderFn){
   if (!key) return;
 
   // Restore focus with preventScroll so it doesn't jump the page
-  const safe = key.replace(/"/g, '\\"');
-  const el = document.querySelector(`[data-focus-key="${safe}"]`);
+  const esc = (window.CSS && typeof CSS.escape === 'function')
+    ? CSS.escape(key)
+    : String(key).replace(/["\\]/g, '\\$&');
+  const el = document.querySelector(`[data-focus-key="${esc}"]`);
   if (!el) return;
   try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); }
 
@@ -1696,50 +1757,52 @@ const targetSegments = [...orderPathSegments(order), kindFolder];
 
   order.files = Array.isArray(order.files) ? order.files : [];
 
-  // === Special handling: Comparison (PDF only, single copy) ===
+  // === Special handling: Comparison (PDF/CSV/XLSX, keep original uploaded filename) ===
   if (kind === 'Comparison') {
-    // Accept only PDFs for Comparison
-    const pdfs = files.filter(f => (f.type === 'application/pdf') || /\.pdf$/i.test(f.name));
-    if (!pdfs.length) {
-      alert('Comparison accepts PDF files only.');
+    const allowed = files.filter(f => {
+      const n = (f && f.name) ? String(f.name) : '';
+      return (
+        (f && f.type === 'application/pdf') ||
+        /\.pdf$/i.test(n) ||
+        /\.csv$/i.test(n) ||
+        /\.xlsx$/i.test(n)
+      );
+    });
+
+    if (!allowed.length) {
+      alert('Comparison accepts PDF, CSV, or XLSX files only.');
       return;
     }
 
-    // Delete any existing Comparison PDFs (single-copy policy)
-    try {
+    for (const f of allowed) {
+      const originalName = safeName(f.name || 'comparison');
+
+      // If the exact same Comparison filename already exists, replace that one only.
       const keep = [];
       const toDelete = [];
-      for (const r of order.files) {
-        const isComp = (r.kind === 'Comparison');
-        const isPDF  = /\.pdf$/i.test(r.filename || '');
-        if (isComp && isPDF) toDelete.push(r); else keep.push(r);
+      for (const r of (Array.isArray(order.files) ? order.files : [])) {
+        const sameKind = r && r.kind === 'Comparison';
+        const sameName = r && r.filename === originalName;
+        if (sameKind && sameName) toDelete.push(r);
+        else keep.push(r);
       }
       for (const r of toDelete) {
         try { await deleteFileAtPath(base, r.segments, r.filename); } catch(_) {}
       }
-      order.files = keep; // drop old metadata
-    } catch(_) {}
+      order.files = keep;
 
-    // Save with canonical name so it always overwrites
-    const code = order.rfq || order.adhocCode || order.id || 'no-code';
-    const canonicalName = `Comparison_${safeName(code)}.pdf`;
+      await saveBlobToPath(base, targetSegments, originalName, f);
 
-    // If multiple PDFs are dropped, last one wins (all written to same name)
-    let lastSize = 0;
-    for (const f of pdfs) {
-      await saveBlobToPath(base, targetSegments, canonicalName, f);
-      lastSize = f.size;
+      order.files.push({
+        kind: 'Comparison',
+        segments: targetSegments,
+        filename: originalName,
+        label: originalName,
+        date: new Date().toISOString(),
+        size: f.size
+      });
     }
 
-    // Register a single attachment entry
-    order.files.push({
-      kind: 'Comparison',
-      segments: targetSegments,
-      filename: canonicalName,
-      label: canonicalName,
-      date: new Date().toISOString(),
-      size: lastSize
-    });
     return;
   }
 
@@ -1934,10 +1997,10 @@ async function auditOrderFiles(order){
 
   // Build table rows for misplaced refs
   const badRows = badList.length ? badList.map(x => el('tr', {},
-    el('td', {}, _h(x.ref.kind || '')),
-    el('td', {}, _h(x.ref.filename || x.ref.label || '')),
-    el('td', {}, _h((x.actual||[]).join('/') || '(none)')),
-    el('td', {}, _h((x.expected||[]).join('/'))),
+    el('td', {}, (x.ref.kind || '')),
+    el('td', {}, (x.ref.filename || x.ref.label || '')),
+    el('td', {}, ((x.actual||[]).join('/') || '(none)')),
+    el('td', {}, ((x.expected||[]).join('/'))),
     el('td', {}, el('button', {
       class:'btn secondary',
       onclick: async ()=>{
@@ -2425,16 +2488,30 @@ const APP_STORE = 'state';
    [SECTION] State & Persistence (IndexedDB + storage) - ONE COPY ONLY
    ===================================================================== */
 
+let _appDbPromise = null;
+
 function appDbOpen(){
-  return new Promise((resolve, reject)=>{
+  if (_appDbPromise) return _appDbPromise;
+
+  _appDbPromise = new Promise((resolve, reject)=>{
     const req = indexedDB.open(APP_DB, APP_VER);
+
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(APP_STORE)) db.createObjectStore(APP_STORE);
     };
-    req.onsuccess = ()=>resolve(req.result);
-    req.onerror  = ()=>reject(req.error);
+
+    req.onsuccess = () => resolve(req.result);
+
+    req.onerror = () => {
+      // If open fails, allow retry on next call
+      const err = req.error;
+      _appDbPromise = null;
+      reject(err);
+    };
   });
+
+  return _appDbPromise;
 }
 
 async function appStateSet(key, obj){
@@ -3450,9 +3527,8 @@ class OrderManager {
     }) || null;
   }
 
-  // Return the best key we can use to address an order
+// Return the best key we can use to address an order
   resolveOrderKey(o){
-
     return (o && (o.id || o.rfq || o.adhocCode)) || null;
   }
 
@@ -3597,8 +3673,7 @@ if (o && o.__sep){
 openBtn.onclick = () => {
   state.currentTab = 'orders';
   save(); render();
-  const mgr = new OrderManager(state);
-  mgr.edit(o.id || o.rfq || o.adhocCode || o.orderNo);
+  orderManager.edit(o.id || o.rfq || o.adhocCode || o.orderNo);
 };
 
         const markPaidBtn = inv.paid ? null : el('button', {
@@ -3767,27 +3842,27 @@ openBtn.onclick = () => {
           })()
         ),
 
-        // Actions (robust key resolution; UI unchanged)
-        el('td', {},
-          el('button', {
-            class:'btn',
-            onclick:()=> {
-              const k = this._resolveOrderKey(o);
-              if (!k) return alert('Cannot edit: missing identifier on this order.');
-              this.edit(k);
-            }
-          }, 'Edit'), ' ',
-          el('button', { class:'btn', onclick:()=>this.viewFiles(o) }, 'Files'), ' ',
-          el('button', { class:'btn', onclick:()=>this.viewItems(o) }, 'View items'), ' ',
-          el('button', {
-            class:'btn danger',
-            onclick:()=> {
-              const k = this._resolveOrderKey(o);
-              if (!k) return alert('Cannot delete: missing identifier on this order.');
-              this.delete(k);
-            }
-          }, 'Delete')
-        )
+// Actions (robust key resolution; UI unchanged)
+el('td', {},
+  el('button', {
+    class:'btn',
+    onclick:()=> {
+      const k = this._resolveOrderKey(o);
+      if (!k) return alert('Cannot edit: missing identifier on this order.');
+      this.edit(k);
+    }
+  }, 'Edit'), ' ',
+  el('button', { class:'btn', onclick:()=>this.viewFiles(o) }, 'Files'), ' ',
+  el('button', { class:'btn', onclick:()=>this.viewItems(o) }, 'View items'), ' ',
+  el('button', {
+    class:'btn danger',
+    onclick:()=> {
+      const k = this._resolveOrderKey(o);
+      if (!k) return alert('Cannot delete: missing identifier on this order.');
+      this.delete(k);
+    }
+  }, 'Delete')
+)
       );
      })
     )
@@ -4053,25 +4128,14 @@ const rows = (o.items || []).map((it, idx)=>{
   );
 });
 
-    const addBtn = el('button', {
-      class:'btn',
-      onclick:()=>{
-        o.items.push(normalizeItem({ name:'', unit:'pcs', qtyTotal:1, unitPrice:0, currency:'RON' }));
-        saveSoon?.();
-        // Re-open the same order (works for both new draft and existing order)
-        this.edit(o.id);
-      }
-    }, 'Add Item');
-
     return el('div', {},
       el('h3', {}, 'Items'),
       el('table', { class:'grid' },
         el('thead', {}, head),
         el('tbody', {}, ...rows)
-      ),
-      el('div', { class:'form-row', style:{ marginTop:'8px' } }, addBtn)
+      )
     );
-  };
+  }; // <-- CLOSE renderItemsTable properly
 
   // Core order fields
   let adhocCb; // defined a bit later
@@ -4109,53 +4173,120 @@ const rows = (o.items || []).map((it, idx)=>{
     : el('div', { class:'muted', style:{marginTop:'4px'} }, 'Files section not available in this build.')
   );
 
+  // --- Notes (chat-style) ---
+  o.notes = Array.isArray(o.notes) ? o.notes : [];
+
+  const formatNoteTS = (iso)=>{
+    try{
+      const d = new Date(iso);
+      const y = d.getFullYear();
+      const m = String(d.getMonth()+1).padStart(2,'0');
+      const da = String(d.getDate()).padStart(2,'0');
+      const hh = String(d.getHours()).padStart(2,'0');
+      const mm = String(d.getMinutes()).padStart(2,'0');
+      return `${y}-${m}-${da} ${hh}:${mm}`;
+    }catch(_){
+      return iso || '';
+    }
+  };
+
+  const renderNotesPanel = ()=>{
+    const list = el('div', { class:'notes-list' },
+      ...(o.notes || []).slice().reverse().map(n =>
+        el('div', { class:'note-line' },
+          el('span', { class:'note-ts' }, `${formatNoteTS(n.ts)}:`),
+          el('span', {}, n.text || '')
+        )
+      )
+    );
+
+    const inp = el('textarea', {
+      class:'note-input',
+      rows:2,
+      placeholder:'Write a note...',
+    });
+
+    const add = ()=>{
+      const txt = String(inp.value || '').trim();
+      if (!txt) return;
+      o.notes.unshift({ ts: new Date().toISOString(), text: txt });
+      inp.value = '';
+      saveSoon?.();
+      this.edit(o.id);
+    };
+
+    const btnAdd = el('button', { class:'btn', onclick:add }, 'Add note');
+
+    inp.addEventListener('keydown', (e)=>{
+      if (e.key === 'Enter' && !e.shiftKey){
+        e.preventDefault();
+        add();
+      }
+    });
+
+    return el('div', { class:'order-notes' },
+      el('h4', {}, 'Notes'),
+      list,
+      inp,
+      el('div', { class:'note-actions' }, btnAdd)
+    );
+  };
+
   // Assemble the full form
   const form = el('div', {},
     el('h3', {}, isNew ? 'New Order' : `Edit Order — ${o.rfq || o.orderNo || o.adhocCode || '(no ref)'}`),
 
-    // Origin + RFQ + PO
-    el('div', { class:'form-row' },
-      // Ad-hoc toggle
-      el('label', {},
-        adhocCb = el('input', {
-          type:'checkbox',
-          checked: (o.origin === 'adhoc'),
-          onchange:(e)=>{
-            if (e.target.checked) {
-              o.origin = 'adhoc';
-              if (!o.adhocCode) o.adhocCode = generateAdhocCode();
-              o.rfq = '';
-              rfqInp.value = '';
-              rfqInp.disabled = true;
-            } else {
-              o.origin = 'request';
-              o.adhocCode = '';
-              rfqInp.disabled = false;
-            }
-            saveSoon?.();
-          }
-        }),
-        ' Ad-hoc (no RFQ)'
+    el('div', { class:'order-top-grid' },
+      el('div', { class:'order-top-left' },
+
+        // Origin + RFQ + PO
+        el('div', { class:'form-row' },
+          // Ad-hoc toggle
+          el('label', {},
+            adhocCb = el('input', {
+              type:'checkbox',
+              checked: (o.origin === 'adhoc'),
+              onchange:(e)=>{
+                if (e.target.checked) {
+                  o.origin = 'adhoc';
+                  if (!o.adhocCode) o.adhocCode = generateAdhocCode();
+                  o.rfq = '';
+                  rfqInp.value = '';
+                  rfqInp.disabled = true;
+                } else {
+                  o.origin = 'request';
+                  o.adhocCode = '';
+                  rfqInp.disabled = false;
+                }
+                saveSoon?.();
+              }
+            }),
+            ' Ad-hoc (no RFQ)'
+          ),
+
+          // RFQ input (disabled while Ad-hoc)
+          el('label', { style:{ marginLeft:'10px' } }, 'RFQ ',
+            (()=>{
+              if (o.origin === 'adhoc') rfqInp.disabled = true;
+              return rfqInp;
+            })()
+          ),
+
+          // PO input
+          el('label', { style:{ marginLeft:'10px' } }, 'PO # ', orderNoInp)
+        ),
+
+        el('div', { class:'form-row' },
+          el('label', { style:{ width:'100%' } }, 'Title ', titleInp)
+        ),
+
+        el('div', { class:'form-row' },
+          el('label', { style:{ width:'100%' } }, 'Description ', descInp)
+        )
       ),
 
-      // RFQ input (disabled while Ad-hoc)
-      el('label', { style:{ marginLeft:'10px' } }, 'RFQ ',
-        (()=>{
-          if (o.origin === 'adhoc') rfqInp.disabled = true;
-          return rfqInp;
-        })()
-      ),
-
-      // PO input
-      el('label', { style:{ marginLeft:'10px' } }, 'PO # ', orderNoInp)
-    ),
-
-    el('div', { class:'form-row' },
-      el('label', { style:{ width:'100%' } }, 'Title ', titleInp)
-    ),
-
-    el('div', { class:'form-row' },
-      el('label', { style:{ width:'100%' } }, 'Description ', descInp)
+      // Notes panel on the right
+      renderNotesPanel()
     ),
 
 // Workflow Status (Ongoing / On hold / Completed / Canceled)
@@ -4307,6 +4438,47 @@ const rows = (o.items || []).map((it, idx)=>{
     // Files block (drop zone / list) — moved ABOVE Items
     filesSection,
 
+    // Top actions (so you don't scroll for long orders)
+    el('div', { class:'form-row', style:{ marginTop:'10px', marginBottom:'8px', gap:'8px' } },
+      el('button', {
+        class:'btn',
+        onclick:()=>{
+          o.items = Array.isArray(o.items) ? o.items : [];
+          o.items.push(normalizeItem({ name:'', unit:'pcs', qtyTotal:1, unitPrice:0, currency:'RON' }));
+          saveSoon?.();
+          this.edit(o.id);
+        }
+      }, 'Add Item'),
+
+      el('button', {
+        class:'btn',
+        onclick:()=>{
+          // Save/create (same behavior as bottom button)
+          if (!o.title || !o.title.trim()){
+            alert('Title is required.');
+            return;
+          }
+          if (isNew){
+            this.state.orders.push(o);
+          }
+          if (state && Object.prototype.hasOwnProperty.call(state,'_draftOrder')) {
+            state._draftOrder = null;
+          }
+          try { save(); } catch (e) { console.error('save() failed:', e); }
+          state.currentTab = 'orders';
+          render();
+        }
+      }, isNew ? 'Create' : 'Save'),
+
+      el('button', {
+        class:'btn secondary',
+        onclick:()=>{
+          state.currentTab = 'orders';
+          render();
+        }
+      }, 'Cancel')
+    ),
+
     // Items block (now BELOW Files)
     renderItemsTable(),
 
@@ -4369,19 +4541,22 @@ const rows = (o.items || []).map((it, idx)=>{
 
   const view = document.querySelector('.view');
   if (view) { view.innerHTML=''; view.appendChild(form); }
-}
+  }
+ } // end class OrderManager
+ // FIX: close class OrderManager (was left open by C2 patch)
 
-  // --- NEW: Files modal per order ---
-  viewFiles(order){
+// --- NEW: Files modal per order ---
+OrderManager.prototype.viewFiles = function(order){
+
     // normalize references
     const refs = Array.isArray(order.files) ? order.files : [];
 
 const rows = refs.length
   ? refs.map((r, idx) => el('tr', {},
-      el('td', {}, _h(displayKind(r.kind || ''))),
-      el('td', {}, _h(r.label || r.filename)),
+      el('td', {}, displayKind(r.kind || '')),
+      el('td', {}, (r.label || r.filename || '')),
       el('td', {}, (r.size != null ? (r.size / 1024).toFixed(1) + ' KB' : '')),
-      el('td', {}, _h(new Date(r.date || Date.now()).toLocaleDateString())),
+      el('td', {}, new Date(r.date || Date.now()).toLocaleDateString()),
       el('td', {},
         el('button', { class:'btn', onclick:()=>openOrderFileRef(r) }, 'Open'), ' ',
         el('button', { class:'btn secondary', onclick: async ()=>{
@@ -4493,9 +4668,10 @@ const content = el('div', {},
 );
 
 modal = showModal(content);
-  }
+  };
 
-renderFilesSection(order){
+OrderManager.prototype.renderFilesSection = function(order){
+
   // Use global helpers:
   // - _h(x) for HTML-escaping user-provided strings
   // - displayKind(k) for mapping legacy kind labels
@@ -4529,7 +4705,7 @@ renderFilesSection(order){
   // NOTE: renamed to avoid shadowing the global safeName() used elsewhere.
   const safeNameLoose = (s)=> String(s).replace(/[\\/:*?"<>|\x00-\x1F]/g,' ').replace(/\s+/g,' ').trim();
 
-  // Base name WITHOUT extension (extension decided later)
+  // Base name WITHOUT extension (used only for non-Comparison kinds)
   const buildBaseName = (o, kind, idx=0)=>{
     const now = new Date();
     const base = `${codeFor(o)} - ${kind} - ${ymd(now)}_${hms(now)}`;
@@ -4538,24 +4714,22 @@ renderFilesSection(order){
   };
 
   const extFor = (kind, file) => {
-    if (kind === 'Comparison') {
-      const name = (file && file.name) || '';
-      if (/\.xlsx$/i.test(name)) return '.xlsx';
-      if (/\.csv$/i.test(name))  return '.csv';
-      return '.csv';
-    }
-    return '.pdf';
+    const name = (file && file.name) || '';
+    const m = name.match(/\.[^.]+$/);
+    if (m) return m[0];
+    return (kind === 'Comparison') ? '' : '.pdf';
   };
 
   const renameFileForOrder = (file, o, kind, idx=0)=>{
+    // IMPORTANT:
+    // Comparison files must be saved exactly as uploaded
+    // (same original filename + same file type, only sanitized later by saveFilesToOrder)
+    if (kind === 'Comparison') return file;
+
     const base = buildBaseName(o, kind, idx);
-    const ext  = extFor(kind, file);
+    const ext  = extFor(kind, file) || '.pdf';
     const finalName = safeNameLoose(`${base}${ext}`);
-    const type = (kind === 'Comparison')
-      ? (file.type || (ext === '.csv'
-          ? 'text/csv'
-          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
-      : (file.type || 'application/pdf');
+    const type = file.type || 'application/pdf';
     return new File([file], finalName, { type });
   };
 
@@ -4585,12 +4759,12 @@ renderFilesSection(order){
           if (!ok.length) { alert('Comparison accepts PDF/CSV/XLSX only.'); return; }
 
           if (typeof saveFilesToOrder === 'function') {
-            // Keep your existing naming rule for Comparison
-            const renamed = ok.map((f,i)=> renameFileForOrder(f, order, 'Comparison', i));
-            await saveFilesToOrder(order, 'Comparison', renamed);
+            // IMPORTANT: save Comparison files exactly as uploaded
+            await saveFilesToOrder(order, 'Comparison', ok);
           }
           if (typeof autoFlagForKind === 'function') autoFlagForKind('Comparison');
         } else {
+
           // Other kinds: PDFs only, renamed per your rule
           const pdfs = filesAll.filter(f => f && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)));
           if (!pdfs.length) { alert('Please choose PDF files for this kind.'); return; }
@@ -4669,10 +4843,11 @@ function recomputeFlagsFromFiles(order){
             );
             if (!ok.length) { alert('Comparison accepts PDF/CSV/XLSX only.'); return; }
             if (typeof saveFilesToOrder === 'function') {
-              const renamed = ok.map((f,i)=> renameFileForOrder(f, order, 'Comparison', i));
-              await saveFilesToOrder(order, 'Comparison', renamed);
+              // IMPORTANT: save Comparison files exactly as uploaded
+              await saveFilesToOrder(order, 'Comparison', ok);
             }
           } else {
+
             // PDFs only
             const pdfs = filesAll.filter(f => f && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)));
             if (!pdfs.length) { alert('Please drop PDF files.'); return; }
@@ -4738,15 +4913,14 @@ function recomputeFlagsFromFiles(order){
       const relPath = ((r.segments && r.segments.length) ? r.segments.join('/') + '/' : '') + (r.filename || '');
       tableBody.appendChild(
         el('tr', {},
-          el('td', {}, _h(displayKind(r.kind))),
+          el('td', {}, displayKind(r.kind)),
           el('td', {},
-            el('div', { title: relPath }, _h(r.label || r.filename)),
-            el('div', { class:'muted', style:{ fontSize:'11px', marginTop:'2px' } }, _h(relPath))
+            el('div', { title: relPath }, (r.label || r.filename || '')),
+            el('div', { class:'muted', style:{ fontSize:'11px', marginTop:'2px' } }, relPath)
           ),
           el('td', {}, (r.size != null ? (r.size/1024).toFixed(1) + ' KB' : '')),
-          el('td', {}, _h(new Date(r.date || Date.now()).toLocaleDateString())),
+          el('td', {}, new Date(r.date || Date.now()).toLocaleDateString()),
           el('td', {},
-
             el('button', {
               class:'btn', title: relPath,
               onclick:()=> (typeof openOrderFileRef === 'function' ? openOrderFileRef(r) : null)
@@ -4837,9 +5011,10 @@ function recomputeFlagsFromFiles(order){
     ),
     table
   );
-}
+};
 
-  viewItems(order){
+OrderManager.prototype.viewItems = function(order){
+
     const items = Array.isArray(order.items) ? order.items : [];
   const supplierName = (it)=> it.supplierId
       ? (this.state.suppliers.find(s=>s.id===it.supplierId)?.company || it.supplierId)
@@ -4911,9 +5086,9 @@ const rows = items.map(it => {
       )
     );
     modal = showModal(content);
-  }
+  };
 
-notes(order){
+OrderManager.prototype.notes = function(order){
   const ta = el('textarea', {
     value: order.notes || '',
     style:{ width:'100%', minHeight:'140px' },
@@ -4935,14 +5110,7 @@ notes(order){
     )
   );
   modal = showModal(content);
-}
-
-  delete(id){
-    if(!confirm('Delete order?')) return;
-    this.state.orders = this.state.orders.filter(x => x.id !== id);
-    save(); render();
-  }
-}
+};
 
 // ===== Class: InvoiceManager - Captures invoice details per order and syncs invoiced/paid flags.
 class InvoiceManager {
@@ -8298,6 +8466,11 @@ setVal(ws, anchors.fxEUR, fxEUR); // B43 = EUR/RON
 const supIds = (cmp.supplierIds || []).filter(Boolean);
 const supCount = supIds.length;
 
+if (!supCount) {
+  alert('No suppliers in this comparison. Please add at least one supplier before exporting.');
+  return;
+}
+
 // Start placing supplier pairs at E/F (E = col index 4 zero-based)
 const startPairCol0 = 4;
 const pairs = supplierPairs(supCount, startPairCol0);
@@ -8880,33 +9053,21 @@ if (needSelected){
     const fx    = (cur === 'EUR') ? fxEUR : (cur === 'USD' ? fxUSD : 1);
     const unitRON = (isFinite(price) ? price : 0) * (isFinite(fx) ? fx : 1);
 
-ws.getCell(r, selPriceCol1).value = Number.isFinite(unitRON) ? unitRON : '';
+    ws.getCell(r, selPriceCol1).value = Number.isFinite(unitRON) ? unitRON : '';
 
-// Write computed selected line total as a plain number (no formula)
-{
-  const rowIdx = r - firstItemRow; // map Excel row to items index
-  const srcItem = items[rowIdx] || {};
-  const qtyVal   = Number((srcItem.qtyTotal ?? srcItem.qty) || 0);
-  const priceVal = Number.isFinite(unitRON) ? unitRON : NaN;
-  ws.getCell(xlA1(selTotalCol0, r)).value = (Number.isFinite(qtyVal) && Number.isFinite(priceVal))
-    ? (qtyVal * priceVal)
-    : '';
-}
+    // Write computed selected line total as a plain number (no formula)
+    {
+      const rowIdx  = r - firstItemRow; // map Excel row to items index
+      const srcItem = items[rowIdx] || {};
+      const qtyVal  = Number((srcItem.qtyTotal ?? srcItem.qty) || 0);
+      const priceVal = Number.isFinite(unitRON) ? unitRON : NaN;
+
+      ws.getCell(xlA1(selTotalCol0, r)).value =
+        (Number.isFinite(qtyVal) && Number.isFinite(priceVal)) ? (qtyVal * priceVal) : '';
+    }
   }
 
-  }
-
-// Totals for Selected (already RON)
-if (needSelected) {
-
-  // Recompute Selected columns locally (avoid block-scope ReferenceError)
-  const selPairIndex = supCount; // Selected pair is after last supplier pair
-  const selPriceCol1 = FIRST_PAIR_COL1 + 2*selPairIndex;
-  const selTotalCol1 = selPriceCol1 + 1;
-  const selPriceCol0 = selPriceCol1 - 1;
-  const selTotalCol0 = selTotalCol1 - 1;
-
-  // Keep the same pattern as supplier totals: put SUM/FX/VAT/NET into the "price" column cells
+  // Totals for Selected (already RON)
   const selTotalColLetter = xlColLetter(selTotalCol0);
 
   ws.getCell(xlA1(selPriceCol0, sumRow)).value = {
@@ -9202,6 +9363,11 @@ Each(k => delete state[k]);
 // Main renderer: swaps the active manager view into .view based on currentTab.
 function render() {
   const view = document.querySelector('.view');
+  if (!view) {
+    console.warn('render(): .view container not found yet');
+    return;
+  }
+
   const managerByTab = {
     orders:      orderManager,
     suppliers:   supplierManager,
@@ -9212,27 +9378,27 @@ function render() {
   // Fallback if an unknown/removed tab was saved previously
   if (!managerByTab[state.currentTab]) {
     state.currentTab = 'orders';
-    save();
+    try { save(); } catch(_) {}
   }
 
-const active = managerByTab[state.currentTab];
+  const active = managerByTab[state.currentTab];
 
-// show view or a friendly error pane
-let viewNode;
-try {
-  viewNode = active.getView();
-} catch (err) {
-  console.error(err);
-  viewNode = el('div', { class:'pane' },
-    el('h3', {}, 'View error'),
-    el('p', {}, 'Something went wrong while rendering this tab. Details:'),
-    el('pre', { style:{whiteSpace:'pre-wrap'} }, (err && err.stack) ? err.stack : String(err))
-  );
-}
+  // show view or a friendly error pane
+  let viewNode;
+  try {
+    viewNode = active.getView();
+  } catch (err) {
+    console.error(err);
+    viewNode = el('div', { class:'pane' },
+      el('h3', {}, 'View error'),
+      el('p', {}, 'Something went wrong while rendering this tab. Details:'),
+      el('pre', { style:{whiteSpace:'pre-wrap'} }, (err && err.stack) ? err.stack : String(err))
+    );
+  }
 
-const container = el('div', {}, renderTabs(), viewNode);
-view.innerHTML = '';
-view.appendChild(container);
+  const container = el('div', {}, renderTabs(), viewNode);
+  view.innerHTML = '';
+  view.appendChild(container);
 
   // Apply virtualization if present
   if (window.__VIRT__ && __VIRT__.apply) __VIRT__.apply();
@@ -9244,52 +9410,90 @@ const orderManager      = new OrderManager(state);
 const comparisonManager = new ComparisonManager(state);
 const trackingManager   = new TrackingManager(state);
 
-// Bootstrap
-window.addEventListener('load', () => {
-  // 1) Immediate render from current in-memory state
-  render();
+// --- Global error hooks (helps catch "nothing renders" situations) ---
+(function installGlobalErrorHooks(){
+  if (window.__globalErrHooksInstalled) return;
+  window.__globalErrHooksInstalled = true;
 
-  // 2) Hint storage persistence (optional, best-effort)
-  if (navigator.storage && navigator.storage.persist) {
-    try { navigator.storage.persist(); } catch(_) {}
-  }
+  let lastToastAt = 0;
+  const showErr = (msg) => {
+    const now = Date.now();
+    if (now - lastToastAt < 800) return; // avoid spam
+    lastToastAt = now;
 
-  // 3) Hydrate from IndexedDB (source of truth) and re-render
-  (async () => {
     try {
-      const idbState = await appStateGet('current');
-      if (idbState) {
-        Object.keys(state).forEach(k => delete state[k]);
-        Object.assign(state, idbState);
-        if (typeof migrate === 'function') migrate(state._schemaVersion);
-        render();
-      } else {
-        // First run for IDB: migrate from localStorage (if any)
-        const raw = localStorage.getItem(LS_KEY);
-        if (raw) {
-          try {
-            const fromLS  = JSON.parse(raw);
-            const cleaned = JSON.parse(JSON.stringify(fromLS, storageReplacer));
-            if (typeof migrate === 'function') {
-              Object.keys(fromLS).forEach(k => delete fromLS[k]);
-              Object.assign(fromLS, cleaned);
-              migrate(fromLS._schemaVersion);
-            }
-            await appStateSet('current', cleaned);
-            // Shrink LS to tiny meta only
-            localStorage.removeItem(LS_KEY);
-            localStorage.setItem(LS_KEY, JSON.stringify({
-              _schemaVersion: cleaned._schemaVersion ?? 3,
-              migratedAt: new Date().toISOString()
-            }));
-          } catch {}
-        }
-      }
-    } catch (e) {
-      console.warn('IDB hydrate failed:', e);
+      if (typeof notify === 'function') notify('err', msg);
+      else if (typeof showCopyToast === 'function') showCopyToast(msg);
+      else alert(msg);
+    } catch(_) {}
+  };
+
+  window.addEventListener('error', (e) => {
+    const err = e && e.error;
+    const msg = (err && err.message) ? err.message : (e && e.message) ? e.message : 'Unknown error';
+    console.error('Unhandled error:', err || e);
+    showErr('Error: ' + msg);
+  });
+
+  window.addEventListener('unhandledrejection', (e) => {
+    const r = e && e.reason;
+    const msg = (r && r.message) ? r.message : String(r || 'Unknown rejection');
+    console.error('Unhandled rejection:', r);
+    showErr('Error: ' + msg);
+  });
+})();
+
+// Bootstrap (robust: run even if already interactive/complete)
+(function bootstrap(){
+  const start = () => {
+    // 1) Immediate render from current in-memory state
+    try { render(); } catch (e) { console.error('Initial render failed:', e); }
+
+    // 2) Hint storage persistence (optional, best-effort)
+    if (navigator.storage && navigator.storage.persist) {
+      try { navigator.storage.persist(); } catch(_) {}
     }
-  })();
-});
+
+    // 3) Hydrate from IndexedDB (source of truth) and re-render
+    (async () => {
+      try {
+        const idbState = await appStateGet('current');
+        if (idbState) {
+          Object.keys(state).forEach(k => delete state[k]);
+          Object.assign(state, idbState);
+          if (typeof migrate === 'function') migrate(state._schemaVersion);
+          try { render(); } catch (e) { console.error('Re-render after IDB hydrate failed:', e); }
+        } else {
+          // First run for IDB: migrate from localStorage (if any)
+          const raw = localStorage.getItem(LS_KEY);
+          if (raw) {
+            try {
+              const fromLS  = JSON.parse(raw);
+              const cleaned = JSON.parse(JSON.stringify(fromLS, storageReplacer));
+              if (typeof migrate === 'function') {
+                Object.keys(fromLS).forEach(k => delete fromLS[k]);
+                Object.assign(fromLS, cleaned);
+                migrate(fromLS._schemaVersion);
+              }
+              await appStateSet('current', cleaned);
+              // Shrink LS to tiny meta only
+              localStorage.removeItem(LS_KEY);
+              localStorage.setItem(LS_KEY, JSON.stringify({
+                _schemaVersion: cleaned._schemaVersion ?? 3,
+                migratedAt: new Date().toISOString()
+              }));
+            } catch {}
+          }
+        }
+      } catch (e) {
+        console.warn('IDB hydrate failed:', e);
+      }
+    })();
+  };
+
+  if (document.readyState === 'complete' || document.readyState === 'interactive') start();
+  else window.addEventListener('load', start);
+})();
 
 </script>
 
