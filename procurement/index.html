@@ -1757,25 +1757,23 @@ const targetSegments = [...orderPathSegments(order), kindFolder];
 
   order.files = Array.isArray(order.files) ? order.files : [];
 
-  // === Special handling: Comparison (PDF/CSV/XLSX, keep original uploaded filename) ===
+  // === Special handling: Comparison (PDF only, keep original uploaded filename) ===
   if (kind === 'Comparison') {
-    const allowed = files.filter(f => {
+    const pdfs = files.filter(f => {
       const n = (f && f.name) ? String(f.name) : '';
       return (
         (f && f.type === 'application/pdf') ||
-        /\.pdf$/i.test(n) ||
-        /\.csv$/i.test(n) ||
-        /\.xlsx$/i.test(n)
+        /\.pdf$/i.test(n)
       );
     });
 
-    if (!allowed.length) {
-      alert('Comparison accepts PDF, CSV, or XLSX files only.');
+    if (!pdfs.length) {
+      alert('Comparison accepts PDF files only.');
       return;
     }
 
-    for (const f of allowed) {
-      const originalName = safeName(f.name || 'comparison');
+    for (const f of pdfs) {
+      const originalName = safeName(f.name || 'comparison.pdf');
 
       // If the exact same Comparison filename already exists, replace that one only.
       const keep = [];
@@ -4446,30 +4444,58 @@ const rows = (o.items || []).map((it, idx)=>{
           o.items = Array.isArray(o.items) ? o.items : [];
           o.items.push(normalizeItem({ name:'', unit:'pcs', qtyTotal:1, unitPrice:0, currency:'RON' }));
           saveSoon?.();
-          this.edit(o.id);
+
+          // IMPORTANT:
+          // If this editor started as a NEW order, keep reopening it as NEW
+          // so the action button stays "Create" and the draft isn't treated
+          // like an already-persisted order.
+          this.edit(isNew ? null : o.id);
         }
       }, 'Add Item'),
-
       el('button', {
         class:'btn',
         onclick:()=>{
-          // Save/create (same behavior as bottom button)
-          if (!o.title || !o.title.trim()){
-            alert('Title is required.');
-            return;
+          // Validation
+          if (!trimStr(o.title)) { alert('Title is required'); return; }
+
+          // Decide origin based on Ad-hoc toggle + RFQ content
+          const wantsAdhoc = !!(adhocCb && adhocCb.checked);
+          if (wantsAdhoc) {
+            o.origin = 'adhoc';
+            o.rfq = '';
+            if (!o.adhocCode) o.adhocCode = generateAdhocCode();
+          } else {
+            o.origin = 'request';
+            o.adhocCode = '';
           }
-          if (isNew){
-            this.state.orders.push(o);
+
+          // Normalize items
+          if (Array.isArray(o.items)) o.items = o.items.map(normalizeItem);
+
+          // Keep status text consistent
+          if (typeof recomputeStatus === 'function') recomputeStatus(o);
+
+          // Upsert order (defensive)
+          state.orders = Array.isArray(state.orders) ? state.orders : [];
+          const idx = state.orders.findIndex(x => x.id === o.id);
+          if (idx === -1) state.orders.push(o); else state.orders[idx] = o;
+
+          // Optional undo snapshot
+          if (typeof setUndoSnapshot === 'function') {
+            try { setUndoSnapshot(); } catch(_) {}
           }
-          if (state && Object.prototype.hasOwnProperty.call(state,'_draftOrder')) {
+
+          // Once the order is persisted, clear the in-memory draft
+          if (state && Object.prototype.hasOwnProperty.call(state, '_draftOrder')) {
             state._draftOrder = null;
           }
+
+          // Persist + navigate back
           try { save(); } catch (e) { console.error('save() failed:', e); }
           state.currentTab = 'orders';
           render();
         }
       }, isNew ? 'Create' : 'Save'),
-
       el('button', {
         class:'btn secondary',
         onclick:()=>{
@@ -4688,13 +4714,11 @@ OrderManager.prototype.renderFilesSection = function(order){
 
   // Accept rules + hint text
   const acceptFor = (kind)=>{
-    return (kind === 'Comparison')
-      ? '.pdf,.csv,.xlsx,application/pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      : '.pdf,application/pdf';
+    return '.pdf,application/pdf';
   };
   const hintFor = (kind)=>{
     return (kind === 'Comparison')
-      ? 'Drop PDF/CSV/XLSX. The file will be saved under Comparison.'
+      ? 'Drop PDF. The file will be saved under Comparison.'
       : 'Drop PDF(s). They will be renamed automatically for this order.';
   };
 
@@ -4747,20 +4771,17 @@ OrderManager.prototype.renderFilesSection = function(order){
         const currentKind = kindSel.value;
 
         if (currentKind === 'Comparison') {
-          // Allow PDF/CSV/XLSX for Comparison
-          const ok = filesAll.filter(f =>
+          // Comparison is PDF-only
+          const pdfs = filesAll.filter(f =>
             f && (
               f.type === 'application/pdf' ||
-              /\.pdf$/i.test(f.name) ||
-              /\.csv$/i.test(f.name) ||
-              /\.xlsx$/i.test(f.name)
+              /\.pdf$/i.test(f.name)
             )
           );
-          if (!ok.length) { alert('Comparison accepts PDF/CSV/XLSX only.'); return; }
+          if (!pdfs.length) { alert('Comparison accepts PDF files only.'); return; }
 
           if (typeof saveFilesToOrder === 'function') {
-            // IMPORTANT: save Comparison files exactly as uploaded
-            await saveFilesToOrder(order, 'Comparison', ok);
+            await saveFilesToOrder(order, 'Comparison', pdfs);
           }
           if (typeof autoFlagForKind === 'function') autoFlagForKind('Comparison');
         } else {
@@ -4835,16 +4856,13 @@ function recomputeFlagsFromFiles(order){
           if (!filesAll.length) { alert('No files detected.'); return; }
 
           if (currentKind === 'Comparison') {
-            // allow PDF/CSV/XLSX
-            const ok = filesAll.filter(f =>
-              f && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name) ||
-                    f.type === 'text/csv' || /\.csv$/i.test(f.name) ||
-                    /\.xlsx$/i.test(f.name))
+            // Comparison is PDF-only
+            const pdfs = filesAll.filter(f =>
+              f && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name))
             );
-            if (!ok.length) { alert('Comparison accepts PDF/CSV/XLSX only.'); return; }
+            if (!pdfs.length) { alert('Comparison accepts PDF files only.'); return; }
             if (typeof saveFilesToOrder === 'function') {
-              // IMPORTANT: save Comparison files exactly as uploaded
-              await saveFilesToOrder(order, 'Comparison', ok);
+              await saveFilesToOrder(order, 'Comparison', pdfs);
             }
           } else {
 
