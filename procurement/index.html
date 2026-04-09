@@ -1203,7 +1203,10 @@ if (typeof showHtmlModal !== 'function') {
       _htmlModalHandle.close();
     }
 
-    const content = el('div', { class:'modal-content' }, el('div', { innerHTML: html }));
+    const host = el('div');
+    host.innerHTML = String(html || '');
+
+    const content = el('div', { class:'modal-content' }, host);
     _htmlModalHandle = showModal(content);
     return _htmlModalHandle;
   }
@@ -1299,14 +1302,11 @@ showHtmlModal(`
   <div id="xlsxPrevHost" style="max-height:70vh; overflow:hidden; background:#fff; border:1px solid #e5e7eb; border-radius:6px;"></div>
 `);
 
-// Inject sandboxed iframe for the sheet HTML (keeps buttons in parent)
+// Render the sheet HTML directly into the preview host (avoids file:// iframe warnings)
 const host = document.getElementById('xlsxPrevHost');
 if (host){
-  const frame = document.createElement('iframe');
-  frame.setAttribute('sandbox', 'allow-same-origin');
-  frame.style.cssText = 'border:0;width:100%;height:70vh;background:#fff;';
-  frame.srcdoc = html;
-  host.appendChild(frame);
+  host.style.cssText = 'max-height:70vh; overflow:auto; background:#fff; border:1px solid #e5e7eb; border-radius:6px; padding:8px;';
+  host.innerHTML = html;
 }
 
 // Wire buttons (same)
@@ -1388,8 +1388,8 @@ async function saveBlobToPath(baseDir, segments, filename, blob){
 }
 
 // open a file from (segments/filename) and return an object URL
-async function openFileFromPath(baseDir, segments, filename){
-  const folder = await ensurePath(baseDir, segments);
+  async function openFileFromPath(baseDir, segments, filename){
+  const folder = await getDirHandleFromSegments(baseDir, segments, false);
   const fileHandle = await folder.getFileHandle(filename, { create:false });
   const file = await fileHandle.getFile();
   return URL.createObjectURL(file);
@@ -2427,11 +2427,10 @@ function migrate(from){
     });
     v = 4;
   }
+const changed = Number(state._schemaVersion || 0) !== v;
 state._schemaVersion = v;
-  save();
+if (changed) save();
 }
-
-migrate(state?._schemaVersion);
 
 // Single undo snapshot key derived from LS_KEY
 const UNDO_KEY = LS_KEY + ':undo';
@@ -2533,17 +2532,28 @@ async function appStateGet(key){
 }
 
 function save(){
-  const slim = JSON.parse(serializeStateForStorage()); // object form for IDB
-  appStateSet('current', slim).catch(()=>{}); // async, best-effort
+  const raw = serializeStateForStorage();
+  const slim = JSON.parse(raw); // object form for IDB
 
-  // Keep only tiny metadata in localStorage as a heartbeat
+  // Primary persistence
+  appStateSet('current', slim).catch((e)=>{
+    console.error('appStateSet failed:', e);
+  });
+
+  // Keep localStorage bootstrap compatible until startup is migrated to IDB-first
   try {
+    localStorage.setItem(LS_KEY, raw);
     localStorage.setItem(LS_KEY + ':meta', JSON.stringify({
       _schemaVersion: state._schemaVersion ?? 3,
       savedAt: new Date().toISOString()
     }));
-  } catch {}
+  } catch (e) {
+    console.error('localStorage save failed:', e);
+  }
 }
+
+// Run migration only after persistence helpers are initialized
+migrate(state?._schemaVersion);
 
 //
 // --- GLOBAL HELPERS (idempotent) ------------------------------------------
@@ -4507,62 +4517,6 @@ const rows = (o.items || []).map((it, idx)=>{
 
     // Items block (now BELOW Files)
     renderItemsTable(),
-
-    // Save / Cancel
-    el('div', { class:'form-row', style:{ marginTop:'10px' } },
-      el('button', {
-        class:'btn',
-        onclick:()=>{
-          // Validation
-          if (!trimStr(o.title)) { alert('Title is required'); return; }
-
-          // Decide origin based on Ad-hoc toggle + RFQ content
-          const wantsAdhoc = !!(adhocCb && adhocCb.checked);
-          if (wantsAdhoc) {
-            o.origin = 'adhoc';
-            o.rfq = '';
-            if (!o.adhocCode) o.adhocCode = generateAdhocCode();
-          } else {
-            o.origin = 'request';
-            o.adhocCode = '';
-          }
-
-          // Normalize items
-          if (Array.isArray(o.items)) o.items = o.items.map(normalizeItem);
-
-          // Keep status text consistent
-          if (typeof recomputeStatus === 'function') recomputeStatus(o);
-
-          // Upsert order (defensive)
-          state.orders = Array.isArray(state.orders) ? state.orders : [];
-          const idx = state.orders.findIndex(x => x.id === o.id);
-          if (idx === -1) state.orders.push(o); else state.orders[idx] = o;
-
-          // Optional undo snapshot
-          if (typeof setUndoSnapshot === 'function') {
-            try { setUndoSnapshot(); } catch(_) {}
-          }
-
-          // Once the order is persisted, clear the in-memory draft
-          if (state && Object.prototype.hasOwnProperty.call(state, '_draftOrder')) {
-            state._draftOrder = null;
-          }
-
-          // Persist + navigate back
-          try { save(); } catch (e) { console.error('save() failed:', e); }
-          state.currentTab = 'orders';
-          render();
-        }
-      }, isNew ? 'Create' : 'Save'),
-
-      el('button', {
-        class:'btn secondary',
-        onclick:()=>{
-          state.currentTab = 'orders';
-          render();
-        }
-      }, 'Cancel')
-    )
   );
 
   const view = document.querySelector('.view');
@@ -4600,7 +4554,7 @@ else render();
           }
         } }, 'Rename'), ' ',
         el('button', { class:'btn secondary', onclick: async ()=>{
-          const kinds = ['PO','Invoice','Proforma','Offer','BankTransfer'];
+          const kinds = ['PO','Invoice','Proforma','Offer','BankTransfer','Comparison','MergedFinal'];
           const pick = prompt('Move to kind: ' + kinds.join(', '), (r.kind || 'Invoice'));
           if (!pick) return;
 
@@ -5295,7 +5249,7 @@ const list = (this.state.orders || []).filter(o=>{
       )
     );
 
-    return el('div', {}, toolbar, filterBar, table);
+    return el('div', {}, toolbar, table);
   }
 
   edit(orderId){
@@ -5498,7 +5452,7 @@ function copyPlainText(txt){
 
   const okToast = (msg) => {
     if (typeof showCopyToast === 'function') showCopyToast(msg);
-    else if (typeof notify === 'function') notify('ok', msg);
+    else if (typeof notify === 'function') notify('success', msg);
   };
 
   const fallback = () => {
@@ -8435,222 +8389,11 @@ function resolveFxVat(cmp){
 function xlColLetter(n){ let s=""; n=Number(n); while(n>=0){ s = String.fromCharCode(n%26+65)+s; n=Math.floor(n/26)-1; } return s; }
 function xlA1(col0, row){ return xlColLetter(col0) + String(row); }
 
-/** Export the current comparison to XLSX using a user-provided template */
+/** Legacy compatibility wrapper.
+ * Comparison export is now handled only by the ExcelJS path.
+ */
 async function exportComparisonXLSX(order, cmp){
-  if (!window.XLSX) {
-  try { await ensureXLSXLoaded(); }
-  catch(e){ alert('Could not load XLSX library. Check internet/CSP and try again.'); return; }
-}
-  try {
-    // 1) Ask for the template
-    const ab = await pickExcelTemplate();
-    const wb = XLSX.read(ab, { type: 'array' });
-
-    // 2) Pick sheet: prefer "KABLO", else first
-    const sheetName = wb.SheetNames.includes('KABLO') ? 'KABLO' : wb.SheetNames[0];
-    const ws = wb.Sheets[sheetName];
-    if (!ws) { alert('Template sheet not found'); return; }
-
-    // 3) Anchors (template layout)
-const anchors = {
-  title:       'A3',
-  date:        'J1',
-  requestNo:   'J2',
-  headerRow:    5,
-  firstItemRow: 6,
-  fxUSD:       'B59',   // USD→RON rate (new)
-  fxEUR:       'B60',   // EUR→RON rate (new)
-  notesRow:    54       // NOTES row (new)
-};
-
-    // 4) Prepare filenames
-    const code = order.rfq || order.adhocCode || 'no-code';
-    const niceDate = fmtDateRO(new Date());
-    const outName = `Comparison_${code}_${niceDate}.xlsx`;
-
-    // 5) === WRITE EVERYTHING ===
-
-// 5.1 Meta: Date (DD.MM.YYYY) and RFQ (only if present)
-setVal(ws, anchors.date, niceDate);
-setVal(ws, anchors.requestNo, order.rfq ? String(order.rfq) : '');
-
-// 5.2 FX & VAT from app (robust)
-const { EUR: fxEUR, USD: fxUSD, VAT: VATp } = resolveFxVat(cmp);
-const VATd = VATp / 100;
-setVal(ws, anchors.fxUSD, fxUSD); // B42 = USD/RON
-setVal(ws, anchors.fxEUR, fxEUR); // B43 = EUR/RON
-
-// 5.3 Suppliers list and dynamic columns
-const supIds = (cmp.supplierIds || []).filter(Boolean);
-const supCount = supIds.length;
-
-if (!supCount) {
-  alert('No suppliers in this comparison. Please add at least one supplier before exporting.');
-  return;
-}
-
-// Start placing supplier pairs at E/F (E = col index 4 zero-based)
-const startPairCol0 = 4;
-const pairs = supplierPairs(supCount, startPairCol0);
-
-// Header row with supplier names (row 5)
-pairs.forEach((p, i)=>{
-  const name = supplierNameById(supIds[i]);
-  const a1 = cellRef(p.priceCol0, anchors.headerRow); // E5, G5, ...
-  setVal(ws, a1, name);
-});
-
-// 5.4 Items band: rows = exactly number of items
-const items = Array.isArray(order.items) ? order.items : [];
-const N = items.length;
-
-const firstRow = anchors.firstItemRow;  // 6
-const lastRow  = firstRow + Math.max(0, N) - 1;
-
-// Write item meta (A..D) and supplier prices (E/G/I/...)
-for (let i=0; i<N; i++){
-  const r = firstRow + i;
-  const it = items[i] || {};
-  setVal(ws, cellRef(0, r), it.name || '');         // A: material
-  setVal(ws, cellRef(1, r), it.unit || '');         // B: unit
-  setVal(ws, cellRef(2, r), Number(it.qtyTotal || it.qty || 0)); // C: qty
-  setVal(ws, cellRef(3, r), it.activityCode || ''); // D: activity code
-
-  // For each supplier pair: Price and Line Total formula (=Price * $Crow)
-  pairs.forEach((p, sIdx)=>{
-    const sid = supIds[sIdx];
-    const q = cmp?.quotes?.[i]?.[sid];
-
-    // Price cell
-    const priceA1 = cellRef(p.priceCol0, r);
-    if (q && q.price != null){
-      setVal(ws, priceA1, Number(q.price));
-    } else {
-      setVal(ws, priceA1, '');
-    }
-
-    // Line total cell: = Price * $C(row)
-    const totalA1 = cellRef(p.totalCol0, r);
-    setFormula(ws, totalA1, `${priceA1}*$C${r}`);
-  });
-}
-
-// Absolute refs for FX cells in the template
-const USD_REF = (()=>{ const m = fxUSD_A1.match(/^([A-Z]+)(\d+)$/i); return m ? ('$'+m[1].toUpperCase()+'$'+m[2]) : '$B$42'; })();
-const EUR_REF = (()=>{ const m = fxEUR_A1.match(/^([A-Z]+)(\d+)$/i); return m ? ('$'+m[1].toUpperCase()+'$'+m[2]) : '$B$43'; })();
-
-// 5.5 Totals block (computed from your last prepared item row)
-// If lastTemplateRow is already defined earlier, this reuses it.
-// If not, set it here to 40 to match your updated template (A6…A40).
-const _lastRow = (typeof lastTemplateRow !== 'undefined') ? lastTemplateRow : 40;
-const sumRow   = _lastRow + 1; // 42
-const fxRow    = sumRow + 1;   // 43
-const vatRow   = fxRow + 1;    // 44
-const netRow   = vatRow + 1;   // 45
-const payRow   = netRow + 1;   // 46
-const transRow = payRow + 1;   // 47
-
-
-pairs.forEach((p, sIdx)=>{
-
-  const sid = supIds[sIdx];
-  // choose supplier currency from first quoted line with a value
-  const scur = supplierCurrency(order, cmp, sid).toUpperCase();
-  const totalColLetter = colLetter(p.totalCol0);
-  // Row 25: SUM of line totals for this supplier column
-  setFormula(ws, cellRef(p.priceCol0, sumRow), `SUM($${totalColLetter}$${firstRow}:$${totalColLetter}$${lastRow})`);
-  // Row 26: to RON
-  const sumCell = cellRef(p.priceCol0, sumRow);
-  if (scur === 'RON') setFormula(ws, cellRef(p.priceCol0, fxRow), `${sumCell}`);
-else if (scur === 'EUR') setFormula(ws, cellRef(p.priceCol0, fxRow), `${sumCell}*$B$43`); // EUR/RON lives in B43
-else if (scur === 'USD') setFormula(ws, cellRef(p.priceCol0, fxRow), `${sumCell}*$B$42`); // USD/RON lives in B42
-  else setFormula(ws, cellRef(p.priceCol0, fxRow), `${sumCell}`); // fallback
-
-  // Row 27: VAT
-  const fxCell = cellRef(p.priceCol0, fxRow);
-  setFormula(ws, cellRef(p.priceCol0, vatRow), `${fxCell}*${VATd}`);
-
-  // Row 28: NET
-  const vatCell = cellRef(p.priceCol0, vatRow);
-  setFormula(ws, cellRef(p.priceCol0, netRow), `${fxCell}+${vatCell}`);
-});
-
-// 5.6 Payment Terms & Transportation (rows 46..47), per supplier (moved by +10)
-pairs.forEach((p, sIdx)=>{
-  const sid = supIds[sIdx];
-  const ps = (cmp.perSupplier || {})[sid] || {};
-
-  // Payment Terms (row 46)
-  setVal(ws, cellRef(p.priceCol0, 46), ps.paymentTerms || '');
-
-  // Transportation (row 47): if no number => INCLUDED; else keep as entered (value + currency)
-  let transTxt = 'INCLUDED';
-  if (ps.transport != null && ps.transport !== '') {
-    const tval = Number(ps.transport);
-    const tcur = (ps.transportCurrency || '').toUpperCase() || 'RON';
-    transTxt = isFinite(tval) ? `${tval} ${tcur}` : String(ps.transport);
-  }
-  setVal(ws, cellRef(p.priceCol0, 47), transTxt);
-});
-
-
-// 5.7 Selected Total (only if winners are split across suppliers)
-const needSelected = hasSplitWinners(cmp);
-if (needSelected){
-  // Dynamically append one extra pair AFTER the last supplier pair
-  const lastPair = pairs[pairs.length - 1];
-  const selPair = {
-    priceCol0: lastPair.totalCol0 + 1, // first col of the selected pair
-    totalCol0: lastPair.totalCol0 + 2  // second col of the selected pair
-  };
-
-  // Header
-  setVal(ws, cellRef(selPair.priceCol0, anchors.headerRow), 'SELECTED TOTAL');
-
-  // Clear any template formulas in the Selected pair range (rows firstRow..firstRow+N-1)
-  for (let i = 0; i < N; i++) {
-    const r = firstRow + i;
-    // Clear TOTAL cell; optionally clear unit cell too if your template prefilled it
-    setVal(ws, cellRef(selPair.totalCol0, r), '');
-    // setVal(ws, cellRef(selPair.priceCol0, r), '');
-  }
-
-  // Fill per-row SELECTED unit (RON) and total (RON) as PLAIN NUMBERS (no formulas)
-  for (let i = 0; i < N; i++) {
-    const r   = firstRow + i;
-    const sid = (cmp.winners || {})[i];
-    const q   = sid ? (cmp.quotes?.[i]?.[sid]) : null;
-
-    const qty = Number(items[i]?.qtyTotal ?? items[i]?.qty ?? 0);
-    const unit = Number(q?.price ?? 0);
-    const cur  = (q?.currency || 'RON').toUpperCase();
-    const fx   = fxForCurrency(cur, fxEUR, fxUSD); // multiplier to RON
-
-    const unitRON  = (Number.isFinite(unit) ? unit * fx : '');
-    const totalRON = (Number.isFinite(unitRON) && Number.isFinite(qty)) ? (unitRON * qty) : '';
-
-    setVal(ws, cellRef(selPair.priceCol0, r), unitRON);
-    setVal(ws, cellRef(selPair.totalCol0, r), totalRON);
-  }
-
-  // Totals for Selected (already RON): SUM/FX/VAT/NET
-  const totalColLetter = colLetter(selPair.totalCol0);
-  const sumCellA1 = cellRef(selPair.priceCol0, sumRow);
-  setFormula(ws, sumCellA1, `SUM($${totalColLetter}$${firstRow}:$${totalColLetter}$${lastRow})`);
-  const fxCellA1 = cellRef(selPair.priceCol0, fxRow);
-  setFormula(ws, fxCellA1, `${sumCellA1}`);
-  const vatCellA1 = cellRef(selPair.priceCol0, vatRow);
-  setFormula(ws, vatCellA1, `${fxCellA1}*${VATd}`);
-  setFormula(ws, cellRef(selPair.priceCol0, netRow), `${fxCellA1}+${vatCellA1}`);
-}
-
-    // 6) Save output (you should see date & maybe RFQ in the resulting file)
-    xlsxSave(wb, outName);
-
-  } catch (err){
-    console.error(err);
-    alert('Excel export failed: ' + (err && err.message ? err.message : err));
-  }
+  return await exportComparisonXLSX_ExcelJS(order, cmp);
 }
 
 // === Styled XLSX export using ExcelJS (preserves borders) ===
@@ -8697,23 +8440,34 @@ async function exportComparisonXLSX_ExcelJS(order, cmp){
 const ws = wb.getWorksheet('KABLO') || wb.worksheets[0];
 
 // === Anchors & rows (new layout) ===
-// Items area A6…A40; totals band 42–45; footer rows; notes row 54; FX cells B59/B60.
-const headerRow      = 5;   // supplier names
-const firstItemRow   = 6;   // items start
-const lastTemplateRow= 40;  // items end (styled)
-const sumRow         = 42;  // Total (materials)
-const fxRow          = 43;  // Total (FX applied)
-const vatRow         = 44;  // VAT
-const netRow         = 45;  // Net (Total+VAT)
-const payRow         = 46;  // Payment terms
-const transRow       = 47;  // Transportation
-const delivRow       = 48;  // Delivery time (if you output it)
-const notesRow       = 54;  // Supplier notes
-const fxUSD_A1       = 'B59';
-const fxEUR_A1       = 'B60';
+// Materials live on rows 6..39.
+// Reserved commercial rows:
+//   40 = TRANSPORT
+//   41 = DISCOUNT
+// Totals band starts at row 42.
+const headerRow        = 5;   // supplier names
+const firstItemRow     = 6;   // first material row
+const lastItemRow      = 39;  // last material row
+const transportItemRow = 40;  // reserved
+const discountItemRow  = 41;  // reserved
+const sumRow           = 42;  // Total (materials + adjustments)
+const fxRow            = 43;  // Total (FX applied)
+const vatRow           = 44;  // VAT
+const netRow           = 45;  // Net (Total+VAT)
+const payRow           = 46;  // Payment terms
+const transRow         = 47;  // Transportation footer/info row
+const delivRow         = 48;  // Delivery time (if you output it)
+const notesRow         = 54;  // Supplier notes
+const fxUSD_A1         = 'B59';
+const fxEUR_A1         = 'B60';
 
 // 3) Meta
 const dateStr = fmtDateRO(new Date());
+const orderTitle = String(order?.title || '').trim();
+const cmpTitle = orderTitle
+  ? `${orderTitle}  REQUEST   COMP.TABL`
+  : 'REQUEST   COMP.TABL';
+
 ws.getCell('J1').value = dateStr;
 ws.getCell('J2').value = order.rfq ? String(order.rfq) : '';
 
@@ -8726,25 +8480,47 @@ ws.getCell(fxEUR_A1).value = fxEUR; // EUR→RON (B60)
 const USD_REF = '$B$59';
 const EUR_REF = '$B$60';
 
-// 5) Suppliers unhide first N prepared pairs (E/F, G/H, I/J, K/L, M/N)
+// 5) Suppliers: baseline pairs 1–3 stay as managed in the template;
+// only extra supplier pairs from #4 onward are explicitly unhidden by the exporter.
 const supIds = (cmp.supplierIds || []).filter(Boolean);
 
 const supCount = supIds.length;
-const MAX_PAIRS = 5;               // you prepared 5 pairs in the template
+const MAX_PAIRS = 7;               // template supports 7 supplier pairs total
 const FIRST_PAIR_COL1 = 5;         // E is column 5 (1-based)
+const BASELINE_VISIBLE_PAIRS = 3;  // E/F, G/H, I/J are the minimum baseline
 
-// Hide all prepared pairs first
-for (let i = 0; i < MAX_PAIRS; i++){
-  ws.getColumn(FIRST_PAIR_COL1 + 2*i).hidden = true;        // price
-  ws.getColumn(FIRST_PAIR_COL1 + 2*i + 1).hidden = true;    // total
+if (supCount > MAX_PAIRS) {
+  throw new Error(`Template supports maximum ${MAX_PAIRS} suppliers, but comparison has ${supCount}.`);
 }
 
-// Unhide the first supCount pairs and set names on row 5 (over price column)
-for (let i = 0; i < supCount; i++){
-  const priceCol1 = FIRST_PAIR_COL1 + 2*i;
+// Title row on A4 merged through the last supplier TOTAL column.
+// Examples:
+// 3 suppliers -> A4:J4
+// 4 suppliers -> A4:L4
+const lastSupplierTotalCol1 = FIRST_PAIR_COL1 + (2 * supCount) - 1;
+const titleMergeRange = `A4:${xlColLetter(lastSupplierTotalCol1 - 1)}4`;
+
+// Best-effort cleanup in case the template already contains a different merge on row 4
+try { ws.unMergeCells('A4:R4'); } catch (_) {}
+
+ws.mergeCells(titleMergeRange);
+const titleCell = ws.getCell('A4');
+titleCell.value = cmpTitle;
+titleCell.alignment = Object.assign({}, titleCell.alignment || {}, {
+  horizontal: 'center',
+  vertical: 'middle'
+});
+
+// Write supplier names on row 5 for all active supplier pairs.
+// Only unhide extra pairs from supplier #4 onward; baseline 1–3 are left alone.
+for (let i = 0; i < supCount; i++){  const priceCol1 = FIRST_PAIR_COL1 + 2*i;
   const totalCol1 = priceCol1 + 1;
-  ws.getColumn(priceCol1).hidden = false;
-  ws.getColumn(totalCol1).hidden = false;
+
+  if (i >= BASELINE_VISIBLE_PAIRS){
+    ws.getColumn(priceCol1).hidden = false;
+    ws.getColumn(totalCol1).hidden = false;
+  }
+
   ws.getCell(headerRow, priceCol1).value = supplierHeaderNameById(supIds[i]);
 }
 
@@ -8786,31 +8562,27 @@ for (let i = 0; i < supCount; i++){
     scurBySid[sid] = cur;
   }
 
-  // Column baseline formats per supplier (apply to entire price/total columns)
-  for (let i = 0; i < supCount; i++){
-    const sid = supIds[i];
-    const fmt = currencyNumFmt(scurBySid[sid]);
-    const priceCol1 = FIRST_PAIR_COL1 + 2*i;
-    const totalCol1 = priceCol1 + 1;
-    ws.getColumn(priceCol1).numFmt = fmt;
-    ws.getColumn(totalCol1).numFmt = fmt;
-  }
-
-
-// Show exactly N item rows (6..5+N), hide the rest up to row 40 (styled area)
-for (let r = firstItemRow; r <= lastTemplateRow; r++){
-  ws.getRow(r).hidden = (r > (firstItemRow + N - 1));
+if (N > (lastItemRow - firstItemRow + 1)) {
+  throw new Error(`Template supports maximum ${lastItemRow - firstItemRow + 1} material rows, but comparison has ${N}.`);
 }
+
+// Show only the needed material rows inside 6..39.
+// Row 6 remains available as the first material row in the template workflow.
+// Rows 40 and 41 are reserved separately for Transport / Discount.
+const visibleLastItemRow = Math.max(firstItemRow, firstItemRow + N - 1);
+for (let r = firstItemRow; r <= lastItemRow; r++){
+  ws.getRow(r).hidden = (r > visibleLastItemRow);
+}
+
+// Start with reserved rows hidden; they will be unhidden only if needed.
+ws.getRow(transportItemRow).hidden = true;
+ws.getRow(discountItemRow).hidden  = true;
 
 // -------------------------------------------------------------
 // Cleanup: remove ANY pre-existing (shared) formulas in TOTAL columns,
-// across the whole items area AND the transport row (row 41).
+// across the whole items area AND the reserved adjustment rows.
 (function clearTemplateLineTotalFormulas(){
-  // Transport row is firstItemRow + N (if anyTransport), but we also
-  // include row 41 unconditionally to neutralize template clones.
-  const transportRow = Math.max(firstItemRow, 41);
-  const maxRow = Math.max(lastTemplateRow, transportRow);
-
+  const maxRow = discountItemRow;
   for (let sIdx = 0; sIdx < supCount; sIdx++){
     const priceCol0 = 4 + sIdx*2;    // E, G, I, ...
     const totalCol0 = priceCol0 + 1; // F, H, J, ...
@@ -8878,6 +8650,7 @@ if (hasSelected) {
   }
 
   // Enforce per-cell number formats so supplier currencies show correctly (RON/EUR/USD)
+  // Clone the style object first to avoid shared-style bleed across template cells.
   for (let i = 0; i < supCount; i++){
     const sid = supIds[i];
     const scur = (scurBySid[sid] || 'RON').toUpperCase();
@@ -8887,17 +8660,37 @@ if (hasSelected) {
 
     // Visible item rows
     for (let r = firstItemRow; r < firstItemRow + N; r++){
-      ws.getCell(r, priceCol1).numFmt = fmt;
-      ws.getCell(r, totalCol1).numFmt = fmt;
+      const cPrice = ws.getCell(r, priceCol1);
+      const cTotal = ws.getCell(r, totalCol1);
+
+      cPrice.style = Object.assign({}, cPrice.style || {});
+      cTotal.style = Object.assign({}, cTotal.style || {});
+
+      cPrice.numFmt = fmt;
+      cTotal.numFmt = fmt;
     }
 
-    // Row 25 should display in supplier currency
-    ws.getCell(sumRow, priceCol1).numFmt = fmt;
+    // Sum row should display in supplier currency
+    {
+      const c = ws.getCell(sumRow, priceCol1);
+      c.style = Object.assign({}, c.style || {});
+      c.numFmt = fmt;
+    }
 
-    // Rows 26 & 28 must display RON (converted amounts)
-    ws.getCell(fxRow,  priceCol1).numFmt = '#,##0.00 "RON"';
-    ws.getCell(vatRow, priceCol1).numFmt = '#,##0.00 "RON"';
-    ws.getCell(netRow, priceCol1).numFmt = '#,##0.00 "RON"';
+    // FX / VAT / NET rows must display in RON
+    {
+      const cFx  = ws.getCell(fxRow,  priceCol1);
+      const cVat = ws.getCell(vatRow, priceCol1);
+      const cNet = ws.getCell(netRow, priceCol1);
+
+      cFx.style  = Object.assign({}, cFx.style  || {});
+      cVat.style = Object.assign({}, cVat.style || {});
+      cNet.style = Object.assign({}, cNet.style || {});
+
+      cFx.numFmt  = '#,##0.00 "RON"';
+      cVat.numFmt = '#,##0.00 "RON"';
+      cNet.numFmt = '#,##0.00 "RON"';
+    }
   }
 
   // 7) Per-supplier totals (rows 25..28) with currency conversion to RON
@@ -8927,62 +8720,30 @@ const vatA1 = xlA1(priceCol0, vatRow);
 ws.getCell(xlA1(priceCol0, netRow)).value = { formula: `${fxA1}+${vatA1}`, result: null };
   }
 
-  // 8) Optional TRANSPORT as material line + Payment Terms & Transportation footer
-  // If any supplier has a transport value, add a new "item" row right under the last item
-  // and include it into the supplier totals (Row 25). Footer row 30 will say "INCLUDED ABOVE".
-  (function addTransportAsMaterial(){
-    // 8.1 Decide if we need the extra row
-    let anyTransport = false;
-    for (let sIdx = 0; sIdx < supCount; sIdx++){
-      const sid = supIds[sIdx];
-      const ps  = (cmp.perSupplier || {})[sid] || {};
-      if (ps && ps.transport != null && ps.transport !== '' && isFinite(Number(ps.transport))) {
-        anyTransport = true;
-        break;
-      }
+  // 8) Reserved commercial rows:
+//   row 40 = TRANSPORT
+//   row 41 = DISCOUNT
+(function addReservedCommercialRows(){
+  let anyTransport = false;
+  let anyDiscount  = false;
+
+  for (let sIdx = 0; sIdx < supCount; sIdx++){
+    const sid = supIds[sIdx];
+    const ps  = (cmp.perSupplier || {})[sid] || {};
+
+    const tr = (ps && ps.transport != null && ps.transport !== '') ? Number(ps.transport) : NaN;
+    const dc = (ps && ps.discount  != null && ps.discount  !== '') ? Number(ps.discount)  : NaN;
+
+    if (Number.isFinite(tr) && tr > 0) {
+      anyTransport = true;
     }
-
-    // If needed, this becomes the new line under items
-    const transportRow = firstItemRow + N; // e.g. items start at 6 -> if 2 items, row = 8
-
-    if (anyTransport){
-      // 8.2 Write base columns (A/B/C) for the transport line
-      ws.getCell(xlA1(0, transportRow)).value = 'TRANSPORT'; // A
-      ws.getCell(xlA1(1, transportRow)).value = 'PCS';       // B
-      ws.getCell(xlA1(2, transportRow)).value = 1;           // C (qty)
-
-      // Unhide the transport row (the earlier "hide extra rows" loop hides rows > firstItemRow+N-1)
-      ws.getRow(transportRow).hidden = false;
-
-      // 8.3 For each supplier, put transport into its Unit/Total columns (converted to supplier currency)
-      //     IMPORTANT: write plain numbers (no formulas) to avoid ExcelJS shared-formula errors.
-      for (let sIdx = 0; sIdx < supCount; sIdx++){
-        const sid = supIds[sIdx];
-        const ps  = (cmp.perSupplier || {})[sid] || {};
-        const priceCol0 = 4 + sIdx*2;      // E, G, I, ...
-        const totalCol0 = priceCol0 + 1;   // F, H, J, ...
-        const scur = (cmp.perSupplier?.[sid]?.currency || 'RON').toUpperCase();
-
-        // transport present?
-        const raw = (ps && ps.transport != null && ps.transport !== '') ? Number(ps.transport) : NaN;
-        const tcur = ((ps && ps.transportCurrency) ? ps.transportCurrency : 'RON').toUpperCase();
-
-const priceA1 = xlA1(priceCol0, transportRow);
-const totalA1 = xlA1(totalCol0, transportRow);
-
-// Before writing, HARD-CLEAR any shared formula metadata on the TOTAL cell
-{
-  const tCell = ws.getCell(totalA1);
-  tCell.value = '';
-  if (tCell.model && tCell.model.sharedFormula) {
-    delete tCell.model.sharedFormula;
+    if (Number.isFinite(dc) && dc > 0) {
+      anyDiscount = true;
+    }
   }
-}
 
-if (isFinite(raw)){
-  // Convert raw transport from tcur -> supplier currency (scur) via RON
-  const eurRate = clampNonNeg(cmp.fx?.EUR ?? 5.0); // RON per EUR (fallback)
-  const usdRate = clampNonNeg(cmp.fx?.USD ?? 4.5); // RON per USD (fallback)
+  const eurRate = clampNonNeg(cmp.fx?.EUR ?? 5.0); // RON per EUR
+  const usdRate = clampNonNeg(cmp.fx?.USD ?? 4.5); // RON per USD
 
   const toRON = (amt, cur) => {
     if (cur === 'EUR') return amt * eurRate;
@@ -8995,36 +8756,120 @@ if (isFinite(raw)){
     return amtRON; // RON
   };
 
-  const ron    = toRON(raw, tcur);
-  const supAmt = fromRON(ron, scur);
+  if (anyTransport){
+    ws.getRow(transportItemRow).hidden = false;
+    ws.getCell(xlA1(0, transportItemRow)).value = 'TRANSPORT'; // A
+    ws.getCell(xlA1(1, transportItemRow)).value = 'PCS';       // B
+    ws.getCell(xlA1(2, transportItemRow)).value = 1;           // C
+    ws.getCell(xlA1(3, transportItemRow)).value = '';          // D
+  }
 
-  // Write PLAIN numbers (no formulas) to avoid shared-formula errors
-  ws.getCell(priceA1).value = supAmt;     // Unit
-  ws.getCell(totalA1).value = supAmt * 1; // Total (qty=1)
+  if (anyDiscount){
+    ws.getRow(discountItemRow).hidden = false;
+    ws.getCell(xlA1(0, discountItemRow)).value = 'DISCOUNT'; // A
+    ws.getCell(xlA1(1, discountItemRow)).value = 'PCS';      // B
+    ws.getCell(xlA1(2, discountItemRow)).value = 1;          // C
+    ws.getCell(xlA1(3, discountItemRow)).value = '';         // D
+  }
 
-  // Extend supplier sumRow with + totalA1 (sumRow is 42 in your layout)
-  const sumCellA1 = xlA1(priceCol0, sumRow);
-  const sumCell = ws.getCell(sumCellA1);
-  const prevF = (sumCell.formula || '').trim();
-  sumCell.value = prevF
-    ? { formula: `(${prevF})+${totalA1}` }
-    : { formula: `${totalA1}` };
-} else {
-  ws.getCell(priceA1).value = '';
-  ws.getCell(totalA1).value = '';
-}
+  for (let sIdx = 0; sIdx < supCount; sIdx++){
+    const sid = supIds[sIdx];
+    const ps  = (cmp.perSupplier || {})[sid] || {};
+    const scur = (cmp.perSupplier?.[sid]?.currency || 'RON').toUpperCase();
+
+    const priceCol0 = 4 + sIdx*2;      // E, G, I, ...
+    const totalCol0 = priceCol0 + 1;   // F, H, J, ...
+
+    const sumCellA1 = xlA1(priceCol0, sumRow);
+    const sumCell   = ws.getCell(sumCellA1);
+    const baseFormula = `SUM($${colLetter(totalCol0)}$${firstItemRow}:$${colLetter(totalCol0)}$${firstItemRow + N - 1})`;
+    let adjFormula = baseFormula;
+
+    // TRANSPORT on row 40
+    {
+      const raw = (ps && ps.transport != null && ps.transport !== '') ? Number(ps.transport) : NaN;
+      const tcur = ((ps && ps.transportCurrency) ? ps.transportCurrency : 'RON').toUpperCase();
+
+      const priceA1 = xlA1(priceCol0, transportItemRow);
+      const totalA1 = xlA1(totalCol0, transportItemRow);
+
+      const tCell = ws.getCell(totalA1);
+      tCell.value = '';
+      if (tCell.model && tCell.model.sharedFormula) delete tCell.model.sharedFormula;
+
+      if (anyTransport && Number.isFinite(raw) && raw > 0){
+        const ron    = toRON(raw, tcur);
+        const supAmt = fromRON(ron, scur);
+        const fmt    = currencyNumFmt(scur);
+
+        const cPrice = ws.getCell(priceA1);
+        const cTotal = ws.getCell(totalA1);
+
+        cPrice.value = supAmt;
+        cTotal.value = supAmt;
+
+        cPrice.style = Object.assign({}, cPrice.style || {});
+        cTotal.style = Object.assign({}, cTotal.style || {});
+
+        cPrice.numFmt = fmt;
+        cTotal.numFmt = fmt;
+
+        adjFormula += `+${totalA1}`;
+      } else {
+        ws.getCell(priceA1).value = '';
+        ws.getCell(totalA1).value = '';
       }
     }
-  })();
 
-// 8.1bis) Footer: Payment Terms (row 46) and Transportation (row 47)
-(function writeFooterPaymentAndTransport(){
+    // DISCOUNT on row 41
+    {
+      const raw = (ps && ps.discount != null && ps.discount !== '') ? Number(ps.discount) : NaN;
+      const dcur = ((ps && ps.discountCurrency) ? ps.discountCurrency : 'RON').toUpperCase();
+
+      const priceA1 = xlA1(priceCol0, discountItemRow);
+      const totalA1 = xlA1(totalCol0, discountItemRow);
+
+      const dCell = ws.getCell(totalA1);
+      dCell.value = '';
+      if (dCell.model && dCell.model.sharedFormula) delete dCell.model.sharedFormula;
+
+      if (anyDiscount && Number.isFinite(raw) && raw > 0){
+        const ron    = toRON(raw, dcur);
+        const supAmt = fromRON(ron, scur);
+        const fmt    = currencyNumFmt(scur);
+
+        const cPrice = ws.getCell(priceA1);
+        const cTotal = ws.getCell(totalA1);
+
+        cPrice.value = supAmt;
+        cTotal.value = supAmt;
+
+        cPrice.style = Object.assign({}, cPrice.style || {});
+        cTotal.style = Object.assign({}, cTotal.style || {});
+
+        cPrice.numFmt = fmt;
+        cTotal.numFmt = fmt;
+
+        adjFormula += `-${totalA1}`;
+      } else {
+        ws.getCell(priceA1).value = '';
+        ws.getCell(totalA1).value = '';
+      }
+    }
+
+    sumCell.value = { formula: adjFormula, result: null };
+  }
+})();
+
+// 8.1bis) Footer: Payment Terms (row 46), Transportation (row 47), Delivery Time (row 48)
+(function writeFooterPaymentTransportAndDelivery(){
   for (let sIdx = 0; sIdx < supCount; sIdx++){
     const sid        = supIds[sIdx];
     const ps         = (cmp.perSupplier || {})[sid] || {};
     const priceCol1  = FIRST_PAIR_COL1 + 2*sIdx; // E=5, G=7, I=9, ...
-    const termsCell  = ws.getCell(46, priceCol1); // row 46, supplier column
-    const transCell  = ws.getCell(47, priceCol1); // row 47, supplier column
+    const termsCell  = ws.getCell(payRow,  priceCol1);   // row 46
+    const transCell  = ws.getCell(transRow, priceCol1);  // row 47
+    const delivCell  = ws.getCell(delivRow, priceCol1);  // row 48
 
     // Payment terms text (empty if not provided)
     termsCell.value = ps.paymentTerms || '';
@@ -9032,10 +8877,15 @@ if (isFinite(raw)){
     // Transportation text:
     // - if numeric transport present -> INCLUDED ABOVE
     // - else -> INCLUDED
-    const hasNumericTransport =
-      ps && ps.transport != null && ps.transport !== '' && isFinite(Number(ps.transport));
-
+    const tr = (ps && ps.transport != null && ps.transport !== '') ? Number(ps.transport) : NaN;
+    const hasNumericTransport = Number.isFinite(tr) && tr > 0;
     transCell.value = hasNumericTransport ? 'INCLUDED ABOVE' : 'INCLUDED';
+
+    // Delivery time text:
+    // - if positive numeric days -> "N DAYS"
+    // - else empty
+    const dd = (ps && ps.deliveryDays != null && ps.deliveryDays !== '') ? Number(ps.deliveryDays) : NaN;
+    delivCell.value = (Number.isFinite(dd) && dd > 0) ? `${dd} DAYS` : '';
   }
 })();
 
@@ -9440,7 +9290,7 @@ const trackingManager   = new TrackingManager(state);
     lastToastAt = now;
 
     try {
-      if (typeof notify === 'function') notify('err', msg);
+      if (typeof notify === 'function') notify('error', msg);
       else if (typeof showCopyToast === 'function') showCopyToast(msg);
       else alert(msg);
     } catch(_) {}
