@@ -1827,19 +1827,6 @@ async function openOrderFileRef(ref){
 }
 
 // Try to open the folder that contains this order's files in a native picker
-async function revealOrderFolder(order){
-  const base = await getBaseFolder(); if (!base) return;
-  // ensure the order folder exists and get its handle
-  const dir = await ensurePath(base, orderPathSegments(order));
-  try {
-    // Open a folder picker starting in that directory (supported in Chromium browsers)
-    await window.showDirectoryPicker({ startIn: dir });
-  } catch (e) {
-    // Some browsers don't support startIn with a handle / or user cancels
-    alert('Could not open the folder directly in this browser. You can still open files below.');
-  }
-}
-
 async function copyOrderPathToClipboard(order){
   // Small inline toast, fades automatically, no extra clicks
   function showCopyToast(message){
@@ -2379,7 +2366,6 @@ const state = (() => {
 })();
 
 // ---- Schema versioning
-const SCHEMA_TARGET = 4;
 
 function migrate(from){
   let v = Number(from || 1);
@@ -2646,18 +2632,6 @@ function inlineField(item, key, label, type='text', idx){
   // initial pass
   apply();
   return el('label', {}, label+' ', inp);
-}
-
-
-function currencyField(item, idx){
-  const sel = el('select', { 'data-path': `item:${idx}:currency` },
-    el('option', { value:'RON' }, 'RON'),
-    el('option', { value:'EUR' }, 'EUR'),
-    el('option', { value:'USD' }, 'USD')
-  );
-  sel.value = item.currency || 'RON';
-  sel.addEventListener('change', () => { item.currency = sel.value; });
-  return el('label', {}, 'Currency ', sel);
 }
 
 function selectSupplierDropdown(item, idx){
@@ -3189,191 +3163,6 @@ delete(id){
 
 // --- Small render helpers for Order editor (componentization)
 
-// Renders the Items section: rows, totals, and "Add item" button (no "+ New" supplier button)
-function renderOrderItemsUI(orderMgr, o){
-  const deliveredAllId = `delivered-all-${o.id}`;
-
-  const rows = o.items.map((it, idx) => el('div', { class:'form-row' },
-    // Basic fields
-    inlineField(it, 'name', 'Item', 'text', idx),
-    inlineField(it, 'qtyTotal', 'Qty', 'number', idx),
-    inlineField(it, 'unit', 'Unit', 'text', idx),
-
-    // Unit price & currency are set from Comparisons; keep read-only in Order
-    el('label', {}, 'Unit Price ',
-      el('input', { type:'text', value: fmtMoney(it.unitPrice || 0), disabled:true, title:'Set in Comparisons tab' })
-    ),
-    el('label', {}, 'Currency ',
-      el('input', { type:'text', value: it.currency || 'RON', disabled:true, title:'Set in Comparisons tab' })
-    ),
-
-// Supplier picker (auto-sync price/currency + keep Comparisons in sync and visible)
-el('label', {}, 'Supplier ',
-  (() => {
-    const sel = selectSupplierDropdown(it, idx);
-    sel.addEventListener('change', () => {
-      const prevSid = it.supplierId || '';
-      const sid = sel.value;
-      if (!sid) return;
-
-      // Ensure comparison object exists
-      const cmp = comparisonManager.ensureComparison(o);
-
-      // Make sure the chosen supplier is visible in one of the 3 Comparison slots
-(function ensureSupplierInCards(){
-  const slots = cmp.supplierIds || (cmp.supplierIds = ['', '', '']);
-  if (slots.includes(sid)) return; // already visible
-
-  // Prefer replacing the previous supplier's slot, if present
-  const prevIdx = prevSid ? slots.indexOf(prevSid) : -1;
-  if (prevIdx !== -1) {
-    slots[prevIdx] = sid;
-  } else {
-    // Fill first empty slot, or append a new one
-    const emptyIdx = slots.indexOf('');
-    if (emptyIdx !== -1) slots[emptyIdx] = sid;
-    else slots.push(sid);
-  }
-
-cmp.perSupplier[sid] = cmp.perSupplier[sid] || {
-  transport:'', transportCurrency:'RON',
-  discount:0,   discountCurrency:'RON',
-  paymentTerms:'',
-  currency:'RON' // NEW: per-supplier offer currency
-};
-})(); // persist happens later in the change handler
-
-      // Look up the quote for this item from the chosen supplier
-      cmp.quotes[idx] = cmp.quotes[idx] || {};
-      const q = cmp.quotes[idx][sid] || null;
-
-      if (q && q.price != null) {
-        // Update order line with the quote terms
-        it.unitPrice = clampNonNeg(q.price);
-        it.currency  = q.currency || 'RON';
-      }
-
-      // Keep Comparisons selection + Order in sync
-      comparisonManager.setWinner(cmp, idx, sid);
-      comparisonManager.applySelectionToOrder(o, cmp, true); // silent push to order
-
-      // Persist + re-render to refresh read-only Unit Price / Currency fields
-      save();
-      orderMgr.edit(orderMgr.state._draftOrder.id);
-    });
-    return sel;
-  })()
-),
-
-// Expected Delivery (per item, ISO yyyy-mm-dd)
-el('label', {}, 'Expected ',
-  el('input', {
-    type:'date',
-    value: it.expectedDelivery || '',
-    onchange:(e)=>{ 
-      it.expectedDelivery = e.target.value; 
-      if (typeof saveSoon === 'function') saveSoon(); else save(); 
-    }
-  })
-),
-
-    // Per-item Delivered toggle (stamps date & syncs flags)
-    el('label', { style:{ marginLeft:'8px' } }, 'Delivered ',
-      el('input', {
-        type:'checkbox',
-        checked: !!it.delivered,
-        onchange:(e)=>{
-          const checked = !!e.target.checked;
-          it.delivered   = checked;
-          it.deliveredAt = checked ? new Date().toISOString() : '';
-
-          // Ensure flags
-          o.statusFlags = (o.statusFlags && typeof o.statusFlags === 'object')
-            ? o.statusFlags
-            : { ordered:false, delivered:false, invoiced:false, paid:false };
-
-          // If any item is delivered, order must be "ordered"
-          if (checked) o.statusFlags.ordered = true;
-
-          // Recompute overall delivered from all items
-          const items = o.items || [];
-          const allDelivered = items.length > 0 && items.every(x => !!x.delivered);
-          o.statusFlags.delivered = allDelivered;
-
-          // Reflect in top-level Delivered without full re-render
-          const top = document.getElementById(deliveredAllId);
-          if (top) top.checked = allDelivered;
-
-          // Recompute status (handles Partially Delivered) + persist
-          recomputeStatus(o);
-          if (typeof saveSoon === 'function') saveSoon(); else save();
-
-          // Keep Status panel checkboxes in sync
-          if (typeof syncStatusUIFromFlags === 'function') {
-            syncStatusUIFromFlags(o);
-          }
-        }
-      })
-    ),
-
-    // Optional: show delivered timestamp next to the checkbox
-    (it.delivered && it.deliveredAt
-      ? el('span', { class:'muted', style:{ marginLeft:'6px', fontSize:'12px' } }, new Date(it.deliveredAt).toLocaleString())
-      : el('span', {})),
-
-    // Line total
-    el('span', { style:{marginLeft:'8px', fontWeight:'600'} },
-      'Total: ' + fmtMoney((it.qtyTotal||0)*(it.unitPrice||0)) + ' ' + (it.currency||'RON')
-    ),
-
-    // Remove row
-    el('button', { class:'btn danger', style:{marginLeft:'8px'}, onclick:()=>{
-      orderMgr.state._draftOrder.items.splice(idx,1);
-
-      // Recompute overall delivered and sync status
-      const items = orderMgr.state._draftOrder.items;
-      const allDelivered = items.length > 0 && items.every(x => !!x.delivered);
-      o.statusFlags = o.statusFlags && typeof o.statusFlags === 'object'
-        ? o.statusFlags
-        : { ordered:false, delivered:false, invoiced:false, paid:false };
-      o.statusFlags.delivered = allDelivered;
-      recomputeStatus(o);
-
-      if (typeof saveSoon === 'function') saveSoon(); else save();
-      orderMgr.edit(orderMgr.state._draftOrder.id);
-    } }, 'Remove')
-  ));
-
-  // Totals by currency
-  const totalsDiv = (()=>{
-    const totals = o.items.reduce((acc, it)=>{
-      const cur = it.currency || 'RON';
-      const val = clampNonNeg(it.qtyTotal)*clampNonNeg(it.unitPrice);
-      acc[cur] = (acc[cur]||0) + val;
-      return acc;
-    }, {});
-    return el('div', { class:'form-row', style:{marginTop:'8px', borderTop:'1px dashed #ccc', paddingTop:'8px'} },
-      el('strong', {}, 'Order totals: '),
-      ...Object.entries(totals).map(([cur, sum]) => el('span', { style:{marginLeft:'8px'} }, `${fmtMoney(sum)} ${cur}`))
-    );
-  })();
-
-  // Add item inherits bulk Delivered state
-  const addBtn = el('button', { class:'btn', onclick:()=>{
-    const deliveredAll = !!(o.statusFlags && o.statusFlags.delivered);
-    const newItem = normalizeItem({ delivered: deliveredAll, deliveredAt: deliveredAll ? new Date().toISOString() : '' });
-    orderMgr.state._draftOrder.items.push(newItem);
-    orderMgr.edit(orderMgr.state._draftOrder.id);
-  } }, 'Add item');
-
-  return [
-    el('h4', {}, 'Items'),
-    ...rows,
-    totalsDiv,
-    addBtn
-  ];
-}
-
 // Renders the Status controls (reordered + consistent behavior)
 
 // Order | Paid | Delivered | Invoice
@@ -3394,96 +3183,6 @@ function syncStatusUIFromFlags(o){
   const currentId = `status-current-${o.id}`;
   const node = document.getElementById(currentId);
   if (node) node.textContent = `Current: ${o.status || 'Draft'}`;
-}
-
-// Renders the Status controls (Order | Paid | Delivered | Invoice)
-function renderStatusControlsUI(orderMgr, o){
-  // Prefer deriving flags from attached files when possible
-  if (typeof recomputeFlagsFromFiles === 'function') {
-    recomputeFlagsFromFiles(o);
-  } else {
-    o.statusFlags = (o.statusFlags && typeof o.statusFlags === 'object')
-      ? o.statusFlags
-      : { ordered:false, delivered:false, invoiced:false, paid:false };
-  }
-
-  const sf = o.statusFlags;
-  const currentId = `status-current-${o.id}`;
-
-  function recomputeAndSave(){
-    if (typeof recomputeStatus === 'function') {
-      recomputeStatus(o);
-    }
-    if (typeof saveSoon === 'function') saveSoon();
-    else if (typeof save === 'function') save();
-
-    syncStatusUIFromFlags(o);
-  }
-
-  function onFlagChange(key, checked){
-    sf[key] = checked;
-
-    if (key === 'delivered'){
-      if (checked){
-        // Turn ON: mark every item delivered and stamp time if missing
-        (o.items || []).forEach(it => {
-          it.delivered = true;
-          if (!it.deliveredAt) it.deliveredAt = new Date().toISOString();
-        });
-      } else {
-        // Turn OFF: clear delivered on all items
-        (o.items || []).forEach(it => {
-          it.delivered = false;
-          it.deliveredAt = '';
-        });
-      }
-    }
-
-    recomputeAndSave();
-
-    // If we toggled Delivered in the editor, refresh the items UI
-    if (key === 'delivered' &&
-        orderMgr &&
-        orderMgr.state &&
-        orderMgr.state._draftOrder &&
-        orderMgr.state._draftOrder.id === o.id &&
-        typeof orderMgr.edit === 'function') {
-      orderMgr.edit(orderMgr.state._draftOrder.id);
-    }
-  }
-
-  const makeBox = (label, key) =>
-    el('label', { style:{ marginRight:'12px', userSelect:'none' } },
-      el('input', {
-        type:'checkbox',
-        'data-status-flag': key,
-        'data-order-id': String(o.id ?? ''),
-        checked: !!sf[key],
-        onchange:(e)=> onFlagChange(key, e.target.checked)
-      }),
-      ' ',
-      label
-    );
-
-  const noItemsDelivered = !o.items?.some(x => x.delivered);
-  const warn = (sf.delivered && noItemsDelivered)
-    ? el('span', { class:'muted', style:{ marginLeft:'8px' } }, '(!) no items marked delivered')
-    : el('span', {});
-
-  return [
-    el('h4', {}, 'Status'),
-    el('div', { class:'form-row' },
-      makeBox('Order',     'ordered'),
-      makeBox('Paid',      'paid'),
-      makeBox('Delivered', 'delivered'),
-      makeBox('Invoice',   'invoiced'),
-      el('span', {
-        id: currentId,
-        style:{marginLeft:'auto', fontStyle:'italic'}
-      }, `Current: ${o.status || 'Draft'}`),
-      warn
-    )
-  ];
 }
 
 // ==== Managers ===============================================================
@@ -3533,18 +3232,6 @@ class OrderManager {
       const xord = (x && x.orderNo   != null) ? String(x.orderNo).trim()   : '';
       return (K === xid || K === xrfq || K === xadh || K === xord);
     }) || null;
-  }
-
-// Return the best key we can use to address an order
-  resolveOrderKey(o){
-    return (o && (o.id || o.rfq || o.adhocCode)) || null;
-  }
-
-  // Ensure id exists and return it
-  ensureOrderId(o){
-    if (!o) return null;
-    if (!o.id) o.id = o.rfq || o.adhocCode || ('ord_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,6));
-    return o.id;
   }
 
   getMainSupplier(order){
@@ -4524,6 +4211,55 @@ const rows = (o.items || []).map((it, idx)=>{
   }
  } // end class OrderManager
  // FIX: close class OrderManager (was left open by C2 patch)
+
+OrderManager.prototype.delete = function(key){
+  const K = (key == null ? '' : String(key)).trim();
+  if (!K) {
+    alert('Cannot delete: missing identifier on this order.');
+    return;
+  }
+
+  const order = (typeof this._findOrderByAnyKey === 'function')
+    ? this._findOrderByAnyKey(K)
+    : null;
+
+  if (!order) {
+    alert('Order not found.');
+    return;
+  }
+
+  const label = order.rfq || order.adhocCode || order.orderNo || order.title || order.id || '(order)';
+  if (!confirm(`Delete order "${label}"?`)) return;
+
+  this.state.orders = Array.isArray(this.state.orders) ? this.state.orders : [];
+  const idx = this.state.orders.findIndex(o =>
+    o && (
+      String(o.id || '').trim() === K ||
+      String(o.rfq || '').trim() === K ||
+      String(o.adhocCode || '').trim() === K ||
+      String(o.orderNo || '').trim() === K
+    )
+  );
+
+  if (idx === -1) {
+    alert('Order not found.');
+    return;
+  }
+
+  this.state.orders.splice(idx, 1);
+
+  if (this.state._draftOrder && (
+    String(this.state._draftOrder.id || '').trim() === K ||
+    String(this.state._draftOrder.rfq || '').trim() === K ||
+    String(this.state._draftOrder.adhocCode || '').trim() === K ||
+    String(this.state._draftOrder.orderNo || '').trim() === K
+  )) {
+    this.state._draftOrder = null;
+  }
+
+  save();
+  render();
+};
 
 // --- NEW: Files modal per order ---
 OrderManager.prototype.viewFiles = function(order){
@@ -8235,55 +7971,11 @@ function fmtDateRO(dt){
   return `${dd}.${mm}.${yyyy}`;
 }
 
-/** Save workbook to file */
-function xlsxSave(wb, filename){
-  const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  downloadArrayBufferAsXlsx(out, filename);
-}
-
-/** Compute if winners are split across multiple suppliers (for showing "Selected Total") */
-function hasSplitWinners(cmp){
-  const winners = cmp && cmp.winners ? Object.values(cmp.winners).filter(Boolean) : [];
-  return new Set(winners).size > 1;
-}
-
-// === XLSX helpers for addressing and formulas ===
-function colLetter(n){ // 0-based index -> Excel column letter
-  let s = ""; n = Number(n);
-  while (n >= 0){ s = String.fromCharCode(n % 26 + 65) + s; n = Math.floor(n / 26) - 1; }
-  return s;
-}
-function cellRef(colIndex0, row){ return colLetter(colIndex0) + String(row); } // 0-based col, 1-based row
-
-// Write a 2D array at cell origin (A1-style)
-function aoa(ws, a2d, origin){ XLSX.utils.sheet_add_aoa(ws, a2d, { origin }); }
-
-// Set text/number into single cell (A1)
-function setVal(ws, a1, v){
-  const cell = ws[a1] || (ws[a1] = {});
-  cell.t = (typeof v === 'number') ? 'n' : 's';
-  cell.v = v;
-  if (typeof v === 'string') delete cell.f;
-}
-
-// Set formula into single cell (A1)
-function setFormula(ws, a1, f){
-  const cell = ws[a1] || (ws[a1] = {});
-  cell.t = 'n';
-  cell.f = f;
-  delete cell.v;
-}
-
 // Get supplier name by id
 function supplierNameById(id){
   const arr = Array.isArray(state?.suppliers) ? state.suppliers : [];
   const s = arr.find(x => x && x.id === id);
   return (s && s.company) ? s.company : '';
-}
-
-function absA1(a1){
-  const m = /^([A-Z]+)(\d+)$/i.exec(a1);
-  return m ? `$${m[1].toUpperCase()}$${m[2]}` : a1;
 }
 
 // Get supplier currency from per-line quotes or per-supplier settings. Fallback: RON.
@@ -8317,7 +8009,6 @@ function supplierCurrency(order, cmp, sid){
 function supplierHeaderNameById(id){
   const arr = Array.isArray(state?.suppliers) ? state.suppliers : [];
   const s = arr.find(x => x.id === id);
-  // trimStr exists in your app; if not near here, just drop trimStr and use .trim()
   const name = s ? (s.legalName || s.company || '') : '';
   return trimStr ? trimStr(name) : String(name).trim();
 }
@@ -8327,24 +8018,6 @@ function currencyNumFmt(cur){
   if (cur === 'EUR') return '#,##0.00 "EUR"';
   if (cur === 'USD') return '#,##0.00 "USD"';
   return '#,##0.00 "RON"';
-}
-
-// FX lookup for a currency code (RON/EUR/USD)
-function fxForCurrency(cur, fxEUR, fxUSD){
-  if (!cur) return 1;
-  cur = String(cur).toUpperCase();
-  if (cur === 'RON') return 1;
-  if (cur === 'EUR') return Number(fxEUR || 0) || 0;
-  if (cur === 'USD') return Number(fxUSD || 0) || 0;
-  return 1;
-}
-
-// Build pair columns indices for N supplier pairs, starting at E (col=4 zero-based)
-function supplierPairs(n, startColIndex0){
-  const pairs = [];
-  let c = startColIndex0;
-  for (let i=0;i<n;i++){ pairs.push({ priceCol0:c, totalCol0:c+1 }); c+=2; }
-  return pairs;
 }
 
 // Resolve FX (EUR, USD) and VAT from the comparison or global state.
@@ -8392,9 +8065,6 @@ function xlA1(col0, row){ return xlColLetter(col0) + String(row); }
 /** Legacy compatibility wrapper.
  * Comparison export is now handled only by the ExcelJS path.
  */
-async function exportComparisonXLSX(order, cmp){
-  return await exportComparisonXLSX_ExcelJS(order, cmp);
-}
 
 // === Styled XLSX export using ExcelJS (preserves borders) ===
 
@@ -8782,7 +8452,8 @@ ws.getCell(xlA1(priceCol0, netRow)).value = { formula: `${fxA1}+${vatA1}`, resul
 
     const sumCellA1 = xlA1(priceCol0, sumRow);
     const sumCell   = ws.getCell(sumCellA1);
-    const baseFormula = `SUM($${colLetter(totalCol0)}$${firstItemRow}:$${colLetter(totalCol0)}$${firstItemRow + N - 1})`;
+    const totalColLetter = xlColLetter(totalCol0);
+    const baseFormula = `SUM($${totalColLetter}$${firstItemRow}:$${totalColLetter}$${firstItemRow + N - 1})`;
     let adjFormula = baseFormula;
 
     // TRANSPORT on row 40
