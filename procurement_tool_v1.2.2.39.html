@@ -5041,7 +5041,7 @@ class OrderManager {
                || (o.adhocCode && String(o.adhocCode).trim())
                || (o.orderNo && String(o.orderNo).trim())
                || null;
-        if (!o.id) o.id = k || ('ord_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,6));
+        if (!o.id) o.id = k || uid();
       });
     }
    }
