@@ -7,6 +7,10 @@ All notable changes to the Procurement Tool will be documented here.
   backup fails, instead of silently swallowing the error. Verified by simulating
   a localStorage failure and confirming the warning fires, then confirming normal
   backups still succeed silently as before.
+- Fixed: order ID fallback now uses the shared uid() function instead of its
+  own separate, weaker ID generation. Verified: no other code in the file
+  depends on the old "ord_" prefix, and confirmed uid() produces a proper
+  ID when the fallback path is triggered.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
