@@ -1,0 +1,6 @@
+Orders/
+*.xlsx
+*.docx
+*.json
+Thumbs.db
+*.tmp
