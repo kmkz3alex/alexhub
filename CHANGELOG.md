@@ -11,6 +11,12 @@ All notable changes to the Procurement Tool will be documented here.
   own separate, weaker ID generation. Verified: no other code in the file
   depends on the old "ord_" prefix, and confirmed uid() produces a proper
   ID when the fallback path is triggered.
+- Fixed: moveFileWithinBase() now logs a console warning if deleting the old
+  file fails after copying to the new location, instead of silently continuing.
+  Previously this could leave an orphaned duplicate file on disk with no
+  indication. Verified using a scratch test folder: confirmed normal moves
+  still work silently, and confirmed a forced delete failure now logs a clear
+  warning and correctly reproduces the orphaned-duplicate scenario.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
