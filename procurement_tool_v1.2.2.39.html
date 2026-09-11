@@ -3183,7 +3183,7 @@ function exportJSON(){
 }
 
 function backupState(){
-  try { localStorage.setItem(getBackupKey(), JSON.stringify(state)); } catch(e){}
+  try { localStorage.setItem(getBackupKey(), JSON.stringify(state)); } catch(e){ console.warn('backupState failed:', e); }
 }
 
 // Restore from the last automatic backup (if available).
