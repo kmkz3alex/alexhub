@@ -2423,7 +2423,7 @@ async function copyFileWithinBase(baseDir, srcSegments, srcFilename, dstSegments
 async function moveFileWithinBase(baseDir, srcSegments, srcFilename, dstSegments, dstFilename){
   await copyFileWithinBase(baseDir, srcSegments, srcFilename, dstSegments, dstFilename);
   // delete old
-  try { await deleteFileAtPath(baseDir, srcSegments, srcFilename); } catch(e){}
+  try { await deleteFileAtPath(baseDir, srcSegments, srcFilename); } catch(e){ console.warn('moveFileWithinBase: failed to delete old file after copy:', e); }
 }
 
 // Move a single reference to a new kind and/or filename; updates ref in metadata
