@@ -39,6 +39,24 @@ All notable changes to the Procurement Tool will be documented here.
   reuse on subsequent exports, manual template change via the new menu option,
   and the stale-file recovery path (tested by temporarily renaming the template
   file) - all confirmed working.
+- Added: Import Historical Quotes now has a review-and-confirm fallback for
+  materials with no exact historical match. Previously, any difference in
+  material name wording (word order, "100T" vs "100TON", etc) caused a silent
+  complete miss. Exact matches remain fully automatic and unchanged. For items
+  with no exact match, a new modal shows related candidates (materials sharing
+  a number and a meaningful word with the item), ranked by how many meaningful
+  words are actually shared, letting the user confirm via checkbox before
+  anything is imported - nothing happens automatically. Diagnosed from two
+  real issues the user encountered: (1) a data-modeling gap where generic
+  material names like "mob/demob" don't distinguish equipment variants
+  (crane tonnage) - resolved by the user adopting more specific naming going
+  forward, no code change; (2) the actual matching bug, fixed here. Verified
+  with 5 real test scenarios: exact-match regression, new-candidate-modal
+  appearance, precise single-item checkbox selection, Cancel doing nothing,
+  and false-positive avoidance (a coincidental number match, e.g. "10" in a
+  crane weight vs a "10 GBPS" cable spec, correctly does not crowd out a
+  genuinely relevant match once results are ranked by shared-word count
+  rather than recency alone - a gap found and fixed during testing itself).
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
