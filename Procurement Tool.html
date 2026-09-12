@@ -671,9 +671,8 @@ thead.sticky th {
   padding: 4px 6px;
   font-size: 12px;
   cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .item-name-ac-item:hover,
@@ -8458,7 +8457,16 @@ return cmp;
     const exactKey = this._materialKey(itemName);
     const itemNumbers = this._extractNumbers(itemName);
     const itemWords = this._extractWords(itemName);
-    if (!itemNumbers.size || !itemWords.size) return [];
+    // Numbers and words are now treated as one combined pool of "significant
+    // tokens" - a match no longer requires a number at all (fixes materials
+    // like "LAPTOP" never getting suggestions). Requires at least 2 shared
+    // tokens total (2 words, 2 numbers, or 1 of each) - deliberately looser
+    // than the old "1 number + 1 word" rule, since this only ever produces a
+    // reviewable suggestion, never an auto-import; the user is always the one
+    // searching and approving, so a few extra suggestions cost little while
+    // covering materials with no numbers in their name at all.
+    const itemTokens = new Set([...itemNumbers, ...itemWords]);
+    if (itemTokens.size < 2) return []; // can't reach the 2-token threshold anyway
 
     const rows = (typeof materialManager !== 'undefined' && materialManager && typeof materialManager._collectRows === 'function')
       ? materialManager._collectRows()
@@ -8476,10 +8484,10 @@ return cmp;
 
       const rNumbers = this._extractNumbers(r.item);
       const rWords = this._extractWords(r.item);
+      const rTokens = new Set([...rNumbers, ...rWords]);
 
-      const hasNumberOverlap = [...itemNumbers].some(n => rNumbers.has(n));
-      const hasWordOverlap = [...itemWords].some(w => rWords.has(w));
-      if (!hasNumberOverlap || !hasWordOverlap) return;
+      const sharedCount = [...itemTokens].filter(t => rTokens.has(t)).length;
+      if (sharedCount < 2) return;
 
       const dedupeKey = rKey + '::' + (r.supplierId || '');
       if (seen.has(dedupeKey)) return;
@@ -8488,16 +8496,15 @@ return cmp;
       candidates.push(r);
     });
 
-    // Rank by how many meaningful words are actually shared (not just "at least
-    // one"), so a strong match like "CABLE DRUM JACK 10TON" ranks above a weak
-    // coincidental one like a "10 GBPS" cable that only shares the word "cable"
-    // and an unrelated numeric coincidence. Recency (candidates' existing order,
-    // inherited from _collectRows' date-desc sort) breaks ties.
+    // Rank by how many tokens (words + numbers combined) are actually shared,
+    // so stronger matches rank above weaker coincidental ones. Recency
+    // (candidates' existing order, inherited from _collectRows' date-desc
+    // sort) breaks ties.
     candidates.sort((a, b) => {
-      const aWords = this._extractWords(a.item);
-      const bWords = this._extractWords(b.item);
-      const aScore = [...itemWords].filter(w => aWords.has(w)).length;
-      const bScore = [...itemWords].filter(w => bWords.has(w)).length;
+      const aTokens = new Set([...this._extractNumbers(a.item), ...this._extractWords(a.item)]);
+      const bTokens = new Set([...this._extractNumbers(b.item), ...this._extractWords(b.item)]);
+      const aScore = [...itemTokens].filter(t => aTokens.has(t)).length;
+      const bScore = [...itemTokens].filter(t => bTokens.has(t)).length;
       return bScore - aScore;
     });
 
@@ -8769,9 +8776,10 @@ return cmp;
         el('div', { style: 'font-weight:600;margin-bottom:6px;' }, `No exact match for "${itemName}" - possibly related:`),
         ...cands.map((r, ci) => {
           const cbId = `relhist_${idx}_${ci}`;
-          return el('label', { style: 'display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;' },
-            el('input', { type: 'checkbox', 'data-idx': String(idx), 'data-ci': String(ci), id: cbId }),
-            el('span', {}, `${r.item} - ${r.supplier} - ${fmt.money(r.price)} ${r.currency} - from ${r.orderRef}`)
+          return el('label', { style: 'display:flex;align-items:flex-start;gap:8px;padding:4px 0;cursor:pointer;' },
+            el('input', { type: 'checkbox', 'data-idx': String(idx), 'data-ci': String(ci), id: cbId, style: 'margin-top:3px;flex-shrink:0;' }),
+            el('span', { style: 'white-space:normal;word-break:break-word;min-width:0;' },
+              `${r.item} - ${r.supplier} - ${fmt.money(r.price)} ${r.currency} - from ${r.orderRef}`)
           );
         })
       ));
