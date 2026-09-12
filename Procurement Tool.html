@@ -9063,7 +9063,7 @@ getView(){
     const cmp = this.ensureComparison(order);
 
 // Remove an extra supplier slot (index >= 3)
-const removeSlot = (slotIdx)=>{
+const removeSlot = async (slotIdx)=>{
   const sid = cmp.supplierIds[slotIdx] || '';
 
   // check if this supplier is used (quotes/winners)
@@ -9073,7 +9073,25 @@ const removeSlot = (slotIdx)=>{
     return q && (q.price || q.delivery || q.currency);
   });
 
-  if ((usedAsWinner || hasQuotes) && !confirm('Removing this slot will clear its quotes and any winners pointing to it. Continue?')) {
+  // Find this supplier's offer file(s) for THIS order only. Offer files are
+  // always order-specific copies (even ones auto-attached via historical
+  // import), so deleting here cannot affect any other order.
+  order.files = Array.isArray(order.files) ? order.files : [];
+  const offerRefs = sid
+    ? order.files.filter(f => f && f.kind === 'Offer' && this._offerRefMatchesSupplier(f, sid))
+    : [];
+
+  const parts = [];
+  if (usedAsWinner || hasQuotes) {
+    parts.push('Removing this slot will clear its quotes and any winners pointing to it.');
+  }
+  if (offerRefs.length) {
+    parts.push(parts.length
+      ? `⚠️ This will also permanently delete ${offerRefs.length} offer file(s) from this order's folder.`
+      : `⚠️ This will permanently delete ${offerRefs.length} offer file(s) from this order's folder.`);
+  }
+
+  if (parts.length && !confirm(parts.join('\n\n') + '\n\nContinue?')) {
     return;
   }
 
@@ -9087,6 +9105,27 @@ const removeSlot = (slotIdx)=>{
   });
   // cleanup perSupplier bag
   if (sid && cmp.perSupplier) delete cmp.perSupplier[sid];
+
+  // delete this supplier's offer file(s) for this order
+  for (const ref of offerRefs) {
+    try {
+      if (typeof getBaseFolder === 'function' && typeof deleteFileAtPath === 'function') {
+        const base = await getBaseFolder();
+        if (base) await deleteFileAtPath(base, ref.segments, ref.filename);
+      }
+      order.files = order.files.filter(f => f !== ref);
+    } catch (e) {
+      if (typeof isNotFoundError === 'function' && isNotFoundError(e)) {
+        order.files = order.files.filter(f => f !== ref);
+        if (typeof notify === 'function') notify('warn', `Offer file "${ref.filename}" was already missing on disk. Removed from the order list.`);
+      } else {
+        console.warn('Failed to delete offer file during supplier removal:', e);
+        if (typeof notify === 'function') notify('error', `Could not delete offer file "${ref.filename}": ${e?.message || e}`);
+      }
+    }
+  }
+  if (typeof recomputeFlagsFromFiles === 'function') recomputeFlagsFromFiles(order);
+  if (typeof recomputeStatus === 'function') recomputeStatus(order);
 
   // remove the slot
   cmp.supplierIds.splice(slotIdx, 1);
