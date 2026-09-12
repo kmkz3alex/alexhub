@@ -2,5 +2,6 @@ Orders/
 *.xlsx
 *.docx
 *.json
+!.vscode/settings.json
 Thumbs.db
 *.tmp
