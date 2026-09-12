@@ -122,6 +122,25 @@ All notable changes to the Procurement Tool will be documented here.
   by normalizing all prices to RON for comparison, then converting the
   chosen value back into the receiving supplier's own currency). Verified
   across many real test scenarios covering every piece and both bugs' fixes.
+- Added: exporting a comparison now automatically copies the order's
+  Comparisons folder path to the clipboard on success, reusing the exact
+  same path-building logic as the existing "Copy Order Path" button - so
+  reaching the exported file is now export, switch to File Explorer, paste,
+  instead of the previous multi-step Copy Order Path -> switch app -> paste
+  -> navigate into the Excel subfolder dance. Also moved the export's folder
+  permission check to the very start of the function, before any workbook
+  building begins, so that if a folder picker is genuinely needed (a stale
+  or expired stored permission), it appears immediately after the click
+  while the browser's "user activation" window is still fresh, rather than
+  risking failure if it were needed deep inside the save process later.
+  Two real issues were diagnosed and resolved during testing, neither of
+  which turned out to be bugs in this feature itself: an open Excel file
+  blocking the app from overwriting it (a user workflow issue, not a code
+  issue - now more robust regardless thanks to the permission-timing fix
+  above), and Live Server's file watcher reloading the page mid-export
+  whenever a file changed inside the Orders/ folder, silently interrupting
+  the in-progress clipboard write (fixed separately by configuring Live
+  Server to ignore Orders/** - see accompanying config commit).
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
