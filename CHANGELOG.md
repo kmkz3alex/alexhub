@@ -141,6 +141,27 @@ All notable changes to the Procurement Tool will be documented here.
   whenever a file changed inside the Orders/ folder, silently interrupting
   the in-progress clipboard write (fixed separately by configuring Live
   Server to ignore Orders/** - see accompanying config commit).
+- Changed: the historical-match candidate rule (from the earlier
+  review-and-confirm fallback in Import Historical Quotes) no longer
+  requires a shared number. Numbers and words are now treated as one
+  combined pool of significant tokens, and a match requires at least 2
+  shared tokens total - 2 words, 2 numbers, or 1 of each. This fixes
+  materials with no number in their name at all (e.g. "LAPTOP") which
+  previously could never get any suggestions, since the old rule
+  unconditionally required a number to overlap. This is a deliberately
+  looser rule than before, accepted as a reasonable trade-off since this
+  only ever produces a reviewable suggestion, never an automatic import -
+  the user is always the one searching for and approving matches, so a few
+  extra irrelevant suggestions cost little in exchange for covering
+  non-numbered materials.
+- Fixed: long material names were being silently cut off in two places -
+  the item-name autocomplete dropdown (when typing a new order item) and
+  the historical-quotes review modal - due to a flexbox layout quirk and
+  ellipsis-based CSS truncation respectively, not because the underlying
+  data was actually incomplete. Both now wrap onto multiple lines so the
+  full name is always visible, which matters in particular when the
+  distinguishing detail (an item code, a spec, a size) sits at the very
+  end of a long name.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
