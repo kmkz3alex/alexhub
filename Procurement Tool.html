@@ -11310,7 +11310,129 @@ ws.getCell(vatRow, priceCol1).numFmt = '#,##0.00 "RON"';
 ws.getCell(netRow, priceCol1).numFmt = '#,##0.00 "RON"';
 }
 
-// 10) Save to the Order's "Comparisons" folder (Option 1)
+// 9) Fill missing material prices (0 / no quote) with the lowest available
+//    price among other suppliers for that same material, normalized through
+//    exchange rates so this works correctly across mixed currencies (e.g. a
+//    RON supplier borrowing from a EUR supplier's price gets a properly
+//    converted RON amount, not the raw EUR number). The substituted number's
+//    TEXT is colored red so it's clearly visible as borrowed, not an actual
+//    quote from that supplier. Only the PRICE cell is touched - the TOTAL
+//    cell's existing formula (price x qty) then reflects it automatically.
+//    Materials only - TRANSPORT/DISCOUNT rows are untouched, since those are
+//    supplier-specific lump sums, not interchangeable between suppliers.
+//    This only affects the exported Excel file; it does not modify any data
+//    stored in the app itself.
+{
+  for (let r = firstItemRow; r < firstItemRow + N; r++){
+    const rowPrices = supIds.map((sid, i) => {
+      const priceCol1 = FIRST_PAIR_COL1 + 2 * i;
+      const cell = ws.getCell(r, priceCol1);
+      const val = Number(cell.value) || 0;
+      const curr = (scurBySid[sid] || 'RON').toUpperCase();
+      const rate = comparisonManager.rate(cmp, curr);
+      const valRON = val * rate;
+      return { sid, priceCol1, cell, val, curr, rate, valRON };
+    });
+
+    const validRON = rowPrices.filter(p => p.val > 0).map(p => p.valRON);
+    if (!validRON.length) continue; // nobody quoted this material at all
+
+    const lowestRON = Math.min(...validRON);
+
+    rowPrices.forEach(p => {
+      if (p.val > 0) return; // already has a real price, leave it alone
+      const converted = p.rate > 0 ? (lowestRON / p.rate) : lowestRON;
+      p.cell.style = Object.assign({}, p.cell.style || {});
+      p.cell.value = Math.round(converted * 100) / 100; // 2 decimals, like currency
+      p.cell.font = Object.assign({}, p.cell.font || {}, { color: { argb: 'FFFF0000' } });
+    });
+  }
+}
+
+// 10) Dynamic DATE / Request Number placement, L1..LN ranking (by total
+//    WITHOUT VAT, so tax-exempt suppliers - whose total-with-VAT would be
+//    identical to their total-without-VAT and could misleadingly tie or
+//    distort ranking - are compared fairly), and winner highlighting (green).
+{
+  // Clear the template's static DATE:/Request Number: labels (hardcoded at
+  // I1/I2, which only happens to be correct when there are exactly 3
+  // suppliers) - we always rewrite them at the correct position for
+  // whatever the active supplier count actually is.
+  ws.getCell(1, 9).value = '';  // I1
+  ws.getCell(1, 10).value = ''; // J1
+  ws.getCell(2, 9).value = '';  // I2
+  ws.getCell(2, 10).value = ''; // J2
+
+  const lastPriceCol1 = FIRST_PAIR_COL1 + 2 * (supCount - 1);
+  const lastTotalCol1 = lastPriceCol1 + 1;
+
+  const dateLabelCell = ws.getCell(1, lastPriceCol1);
+  const dateValueCell = ws.getCell(1, lastTotalCol1);
+  const reqLabelCell  = ws.getCell(2, lastPriceCol1);
+  const reqValueCell  = ws.getCell(2, lastTotalCol1);
+
+  // Clone style before mutating (cells may share a style object from the
+  // template - mutating in place could silently affect unrelated cells,
+  // same reasoning as the existing pattern used elsewhere in this function).
+  [dateLabelCell, dateValueCell, reqLabelCell, reqValueCell].forEach(c => {
+    c.style = Object.assign({}, c.style || {});
+  });
+
+  dateLabelCell.value = 'DATE:';
+  dateLabelCell.font = { name: 'Calibri', size: 20, bold: true };
+
+  dateValueCell.value = fmt.date(new Date());
+  dateValueCell.font = { name: 'Calibri', size: 20, bold: false };
+
+  reqLabelCell.value = 'Request Number:';
+  reqLabelCell.font = { name: 'Calibri', size: 20, bold: true };
+
+  reqValueCell.value = order.rfq ? order.rfq : '';
+  reqValueCell.font = { name: 'Calibri', size: 20, bold: false };
+
+  // Ranking (row 55): L1 = lowest total WITHOUT VAT, L2 = next, etc.
+  const ranked = supIds
+    .map((sid, i) => ({
+      sid,
+      priceCol1: FIRST_PAIR_COL1 + 2 * i,
+      totalNoVat: comparisonManager.supplierTotalsRON(order, cmp, sid).totalNoVat
+    }))
+    .sort((a, b) => a.totalNoVat - b.totalNoVat);
+
+  ranked.forEach((r, rank) => {
+    ws.getCell(55, r.priceCol1).value = `L${rank + 1}`;
+  });
+
+  // Winner highlighting (green fill).
+  const GREEN = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF92D050' } };
+  const winnerIds = new Set(Object.values(cmp.winners || {}).filter(Boolean));
+
+  if (winnerIds.size === 1) {
+    // Single overall winner - highlight their name cell in the header row.
+    const winnerSid = [...winnerIds][0];
+    const wIdx = supIds.indexOf(winnerSid);
+    if (wIdx >= 0) {
+      const wPriceCol1 = FIRST_PAIR_COL1 + 2 * wIdx;
+      const cell = ws.getCell(headerRow, wPriceCol1);
+      cell.style = Object.assign({}, cell.style || {});
+      cell.fill = GREEN;
+    }
+  } else if (winnerIds.size > 1) {
+    // Split across suppliers - highlight just the winning price cell per item.
+    order.items.forEach((_, idx) => {
+      const winSid = cmp.winners ? cmp.winners[idx] : null;
+      if (!winSid) return;
+      const wIdx = supIds.indexOf(winSid);
+      if (wIdx < 0) return;
+      const wPriceCol1 = FIRST_PAIR_COL1 + 2 * wIdx;
+      const cell = ws.getCell(firstItemRow + idx, wPriceCol1);
+      cell.style = Object.assign({}, cell.style || {});
+      cell.fill = GREEN;
+    });
+  }
+}
+
+// 11) Save to the Order's "Comparisons" folder (Option 1)
 
 // Build the workbook buffer
 const out = await wb.xlsx.writeBuffer();
