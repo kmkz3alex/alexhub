@@ -10559,14 +10559,18 @@ if (hasSelected) {
 
       ws.getCell(priceA1).value = (q && q.price != null) ? Number(q.price) : '';
 
-// Write the computed line total as a plain number to avoid shared-formula issues
+// Write a real formula (unit price × quantity), matching the template's own
+// convention in every unmodified row (e.g. F6: =E6*C6). Cached result included
+// alongside the formula, matching how TOTAL/VAT rows below already work.
 {
-  const rowIdx = r - firstItemRow; // map Excel row to items index
+  const rowIdx = r - firstItemRow;
   const srcItem = items[rowIdx] || {};
   const qtyVal = Number((srcItem.qtyTotal ?? srcItem.qty) || 0);
   const priceVal = (q && q.price != null) ? Number(q.price) : 0;
-  ws.getCell(totalA1).value = (Number.isFinite(qtyVal) && Number.isFinite(priceVal))
-    ? (qtyVal * priceVal)
+  const qtyA1 = xlA1(2, r); // column C
+  const hasPrice = !!(q && q.price != null);
+  ws.getCell(totalA1).value = hasPrice
+    ? { formula: `${priceA1}*${qtyA1}`, result: qtyVal * priceVal }
     : '';
 }
     }
@@ -10730,7 +10734,7 @@ ws.getCell(xlA1(priceCol0, netRow)).value = { formula: `${fxA1}+${vatA1}`, resul
         const cTotal = ws.getCell(totalA1);
 
         cPrice.value = supAmt;
-        cTotal.value = supAmt;
+        cTotal.value = { formula: `${priceA1}*${xlA1(2, transportItemRow)}`, result: supAmt };
 
         cPrice.style = Object.assign({}, cPrice.style || {});
         cTotal.style = Object.assign({}, cTotal.style || {});
@@ -10766,7 +10770,7 @@ ws.getCell(xlA1(priceCol0, netRow)).value = { formula: `${fxA1}+${vatA1}`, resul
         const cTotal = ws.getCell(totalA1);
 
         cPrice.value = supAmt;
-        cTotal.value = supAmt;
+        cTotal.value = { formula: `${priceA1}*${xlA1(2, discountItemRow)}`, result: supAmt };
 
         cPrice.style = Object.assign({}, cPrice.style || {});
         cTotal.style = Object.assign({}, cTotal.style || {});
