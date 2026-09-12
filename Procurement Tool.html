@@ -2339,6 +2339,50 @@ async function getBaseFolder(){
   return await chooseBaseFolder();
 }
 
+const TEMPLATE_HANDLE_KEY = 'comparisonTemplateHandle';
+
+// choose & remember the comparison template file
+async function chooseComparisonTemplate(){
+  const msgNotSupported = 'Your browser does not support remembering files. Use Edge/Chrome.';
+  if (!FS_SUPPORTED) {
+    if (typeof notify === 'function') notify('error', msgNotSupported);
+    else alert(msgNotSupported);
+    return null;
+  }
+
+  const [handle] = await window.showOpenFilePicker({
+    multiple: false,
+    types: [{
+      description: 'Excel Workbook',
+      accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+    }]
+  });
+
+  const ok = await _verifyPermission(handle, false);
+  if (!ok) {
+    const msgDenied = 'Permission denied for the selected template file.';
+    if (typeof notify === 'function') notify('error', msgDenied);
+    else alert(msgDenied);
+    return null;
+  }
+
+  await _idbPut(TEMPLATE_HANDLE_KEY, handle);
+  const msgSaved = 'Comparison template saved. Future exports will use this file automatically.';
+  if (typeof notify === 'function') notify('success', msgSaved);
+  else alert(msgSaved);
+  return handle;
+}
+
+// retrieve stored template handle (prompts once if not set or no longer accessible)
+async function getComparisonTemplate(){
+  if (!FS_SUPPORTED) return null; // caller falls back to pickExcelTemplate()
+
+  let handle = await _idbGet(TEMPLATE_HANDLE_KEY);
+  if (handle && await _verifyPermission(handle, false)) return handle;
+  // not set, or permission was denied -> ask the user
+  return await chooseComparisonTemplate();
+}
+
 // ensure path like ['Orders','2025','RFQ-19742'] exists under base
 async function ensurePath(dirHandle, segments=[]){
   let cur = dirHandle;
@@ -10354,8 +10398,28 @@ window.Settings = Object.assign({
 async function exportComparisonXLSX_ExcelJS(order, cmp){
   await ensureExcelJSLoaded();
 
-  // 1) Pick template
-  const ab = await pickExcelTemplate();
+  // 1) Get template (remembered handle if available, otherwise prompts once)
+  let ab;
+  if (FS_SUPPORTED) {
+    const handle = await getComparisonTemplate();
+    if (!handle) throw new Error('No comparison template selected.');
+    try {
+      const file = await handle.getFile();
+      ab = await file.arrayBuffer();
+    } catch (e) {
+      // Saved file is gone/moved/renamed - clear the stale reference and ask again
+      await _idbPut(TEMPLATE_HANDLE_KEY, null);
+      const msg = 'Your saved comparison template could not be found (it may have been moved, renamed, or deleted). Please select it again.';
+      if (typeof notify === 'function') notify('error', msg);
+      else alert(msg);
+      const fresh = await chooseComparisonTemplate();
+      if (!fresh) throw new Error('No comparison template selected.');
+      const file = await fresh.getFile();
+      ab = await file.arrayBuffer();
+    }
+  } else {
+    ab = await pickExcelTemplate(); // older-browser fallback, unchanged behavior
+  }
 
   // 2) Load with ExcelJS
   const wb = new ExcelJS.Workbook();
@@ -11100,6 +11164,7 @@ const gearBtn = el('button', {
 
 const utilMenu = el('div', { class:'util-menu', id: menuId },
     el('button', { onclick: chooseBaseFolder }, 'Set Storage Folder'),
+    el('button', { onclick: () => chooseComparisonTemplate() }, 'Change Comparison Template'),
 el('button', {
   title: (() => {
     const p = (window.Settings && Settings.explorerRootPath)
