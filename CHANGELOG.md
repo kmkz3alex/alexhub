@@ -75,6 +75,24 @@ All notable changes to the Procurement Tool will be documented here.
   file from the app, the Files view, AND real disk, deletion is confirmed
   scoped to only the current order, and no file-deletion warning appears when
   no offer file exists.
+- Added: material name autocomplete (when adding order items) rebuilt from
+  scratch, replacing the native browser <datalist> it previously relied on.
+  The native version's filtering behavior was inconsistent and out of the
+  app's control - e.g. typing "crane 100" would show some matching historical
+  materials but silently omit others depending on word order, with no way to
+  fix this in a native datalist. The new dropdown is fully custom-built
+  (mirroring the existing supplier-autocomplete pattern already used
+  elsewhere in the app), matches every typed word independently regardless
+  of order or adjacency (so "rental crane 100" and "crane rental 100" both
+  correctly find "CRANE RENTAL 100TON"), and floats as a viewport-anchored
+  overlay so it's never clipped by the table even for item rows near the
+  bottom of the page - it also intelligently opens upward when there's more
+  room above than below. Full keyboard navigation (arrow keys, Enter,
+  Escape) included, matching the existing supplier-selector's UX. Results
+  capped at 20. Verified across multiple rounds of real testing, including
+  catching and fixing two positioning issues (clipped by the table's own
+  boundaries, then requiring word-order-independent matching) before the
+  final version was confirmed working correctly in all scenarios.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
