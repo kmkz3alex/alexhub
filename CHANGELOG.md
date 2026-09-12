@@ -57,6 +57,24 @@ All notable changes to the Procurement Tool will be documented here.
   crane weight vs a "10 GBPS" cable spec, correctly does not crowd out a
   genuinely relevant match once results are ranked by shared-word count
   rather than recency alone - a gap found and fixed during testing itself).
+- Added: removing a supplier from a comparison (the X button on a supplier
+  slot) now also deletes that supplier's offer file(s) from the current
+  order's folder, instead of leaving orphaned PDFs to be cleaned up manually
+  one at a time. Reuses the existing offer-to-supplier matching logic already
+  used by the historical import feature, and the app's established safe
+  file-delete pattern (handles the file already being missing gracefully).
+  Deletion is strictly scoped to the current order - offer files are always
+  order-specific copies (even ones auto-attached via historical import), so
+  removing a supplier from one order's comparison never touches their offer
+  files on any other order. The confirmation dialog now clearly separates the
+  file-deletion warning (marked with a warning symbol, since it's the more
+  consequential part) from the existing quotes/winners warning, and correctly
+  fires even when there's a file but no quotes/winners yet - previously that
+  specific case would have shown no warning at all. Verified with 4 real test
+  scenarios: Cancel leaves everything intact, confirmed deletion removes the
+  file from the app, the Files view, AND real disk, deletion is confirmed
+  scoped to only the current order, and no file-deletion warning appears when
+  no offer file exists.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
