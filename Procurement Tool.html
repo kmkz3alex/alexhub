@@ -8280,6 +8280,72 @@ return cmp;
     return norm(name || '').replace(/[^a-z0-9]+/g, ' ').trim();
   }
 
+  _extractNumbers(name){
+    const n = norm(name || '');
+    const matches = n.match(/\d+/g);
+    return matches ? new Set(matches) : new Set();
+  }
+
+  _extractWords(name){
+    const n = norm(name || '');
+    const tokens = n.replace(/[^a-z]+/g, ' ').trim().split(/\s+/).filter(t => t.length >= 3);
+    return new Set(tokens);
+  }
+
+  // Find historical rows that are NOT an exact material-name match, but share
+  // at least one number (e.g. tonnage) AND one meaningful word with the given
+  // item name. Used as a review-and-confirm fallback when exact matching finds
+  // nothing - never auto-imported, always shown to the user for confirmation.
+  _findRelatedHistoricalCandidates(order, itemName){
+    const exactKey = this._materialKey(itemName);
+    const itemNumbers = this._extractNumbers(itemName);
+    const itemWords = this._extractWords(itemName);
+    if (!itemNumbers.size || !itemWords.size) return [];
+
+    const rows = (typeof materialManager !== 'undefined' && materialManager && typeof materialManager._collectRows === 'function')
+      ? materialManager._collectRows()
+      : [];
+
+    const seen = new Set(); // dedupe by materialKey + supplierId, keep most recent (rows are pre-sorted by date desc)
+    const candidates = [];
+
+    rows.forEach(r => {
+      if (!r || !r.item) return;
+      if (order.id && r.orderId && String(r.orderId) === String(order.id)) return; // don't learn from itself
+
+      const rKey = this._materialKey(r.item);
+      if (rKey === exactKey) return; // exact matches are handled elsewhere, skip here
+
+      const rNumbers = this._extractNumbers(r.item);
+      const rWords = this._extractWords(r.item);
+
+      const hasNumberOverlap = [...itemNumbers].some(n => rNumbers.has(n));
+      const hasWordOverlap = [...itemWords].some(w => rWords.has(w));
+      if (!hasNumberOverlap || !hasWordOverlap) return;
+
+      const dedupeKey = rKey + '::' + (r.supplierId || '');
+      if (seen.has(dedupeKey)) return;
+      seen.add(dedupeKey);
+
+      candidates.push(r);
+    });
+
+    // Rank by how many meaningful words are actually shared (not just "at least
+    // one"), so a strong match like "CABLE DRUM JACK 10TON" ranks above a weak
+    // coincidental one like a "10 GBPS" cable that only shares the word "cable"
+    // and an unrelated numeric coincidence. Recency (candidates' existing order,
+    // inherited from _collectRows' date-desc sort) breaks ties.
+    candidates.sort((a, b) => {
+      const aWords = this._extractWords(a.item);
+      const bWords = this._extractWords(b.item);
+      const aScore = [...itemWords].filter(w => aWords.has(w)).length;
+      const bScore = [...itemWords].filter(w => bWords.has(w)).length;
+      return bScore - aScore;
+    });
+
+    return candidates.slice(0, 5); // cap to keep the review list manageable
+  }
+
   _latestHistoricalQuotesForOrder(order){
     const result = new Map();
 
@@ -8422,10 +8488,6 @@ return cmp;
     order.files = Array.isArray(order.files) ? order.files : [];
 
     const latestMap = this._latestHistoricalQuotesForOrder(order);
-    if (!latestMap.size) {
-      alert('No exact historical quotes found for this order materials.');
-      return;
-    }
 
     let suppliersAdded = 0;
     let pricesFilled = 0;
@@ -8435,6 +8497,7 @@ return cmp;
     let offerFilesMissing = 0;
 
     const copiedOfferKeys = new Set();
+    const filledItemIndexes = new Set();
 
     for (const r of latestMap.values()) {
       const sid = r.supplierId || '';
@@ -8483,6 +8546,7 @@ return cmp;
         };
 
         pricesFilled += 1;
+        filledItemIndexes.add(idx);
       });
 
       const offerKey = `${r.orderId || ''}::${sid}`;
@@ -8518,6 +8582,93 @@ return cmp;
       `Offer PDFs skipped: ${offerFilesSkipped}\n` +
       `Offer PDFs missing/not found: ${offerFilesMissing}`
     );
+
+    // Second pass: for items with NO exact match, offer related (loose) matches
+    // for the user to review and confirm - never auto-imported.
+    const candidatesByIdx = new Map();
+    order.items.forEach((it, idx) => {
+      if (filledItemIndexes.has(idx)) return; // already got an exact match
+      if (!it || !trimStr(it.name)) return;
+      const existingQuotesForIdx = cmp.quotes[idx] || {};
+      const alreadyHasAnyPrice = Object.values(existingQuotesForIdx).some(q => q && Number(q.price || 0) > 0);
+      if (alreadyHasAnyPrice) return; // already priced manually, don't suggest
+
+      const cands = this._findRelatedHistoricalCandidates(order, it.name);
+      if (cands.length) candidatesByIdx.set(idx, cands);
+    });
+
+    if (candidatesByIdx.size) {
+      this._showRelatedHistoricalCandidatesModal(order, cmp, candidatesByIdx);
+    }
+  }
+
+  // Review-and-confirm modal for loosely-related historical matches.
+  _showRelatedHistoricalCandidatesModal(order, cmp, candidatesByIdx){
+    const rows = [];
+    candidatesByIdx.forEach((cands, idx) => {
+      const itemName = (order.items[idx] && order.items[idx].name) || '(unnamed item)';
+      rows.push(el('div', { style: 'margin-bottom:16px;' },
+        el('div', { style: 'font-weight:600;margin-bottom:6px;' }, `No exact match for "${itemName}" - possibly related:`),
+        ...cands.map((r, ci) => {
+          const cbId = `relhist_${idx}_${ci}`;
+          return el('label', { style: 'display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;' },
+            el('input', { type: 'checkbox', 'data-idx': String(idx), 'data-ci': String(ci), id: cbId }),
+            el('span', {}, `${r.item} - ${r.supplier} - ${fmt.money(r.price)} ${r.currency} - from ${r.orderRef}`)
+          );
+        })
+      ));
+    });
+
+    const content = el('div', { style: 'max-width:600px;' },
+      el('h3', {}, 'Related historical prices found'),
+      el('div', { style: 'margin-bottom:12px;color:#94a3b8;' },
+        'These did not match exactly, so they were not imported automatically. Check any that are actually the same material to import them.'),
+      ...rows,
+      el('div', { style: 'display:flex;gap:8px;margin-top:16px;' },
+        el('button', {
+          onclick: () => {
+            let imported = 0;
+            candidatesByIdx.forEach((cands, idx) => {
+              cands.forEach((r, ci) => {
+                const cb = document.getElementById(`relhist_${idx}_${ci}`);
+                if (!cb || !cb.checked) return;
+                const sid = r.supplierId || '';
+                if (!sid) return;
+
+                cmp.supplierIds = Array.isArray(cmp.supplierIds) ? cmp.supplierIds : ['', '', ''];
+                if (!cmp.supplierIds.includes(sid)) {
+                  const emptyIdx = cmp.supplierIds.findIndex(x => !x);
+                  if (emptyIdx >= 0) cmp.supplierIds[emptyIdx] = sid;
+                  else cmp.supplierIds.push(sid);
+                }
+
+                cmp.quotes[idx] = cmp.quotes[idx] || {};
+                const existingQ = cmp.quotes[idx][sid];
+                if (existingQ && Number(existingQ.price || 0) > 0) return;
+
+                cmp.quotes[idx][sid] = {
+                  price: Number(r.price || 0),
+                  currency: r.currency || 'RON',
+                  delivery: '',
+                  _historical: true,
+                  _sourceOrderId: r.orderId || '',
+                  _sourceOrderRef: r.orderRef || ''
+                };
+                imported += 1;
+              });
+            });
+            save();
+            render();
+            modal.close();
+            if (typeof notify === 'function') notify('success', `Imported ${imported} confirmed related price(s).`);
+            else alert(`Imported ${imported} confirmed related price(s).`);
+          }
+        }, 'Import Selected'),
+        el('button', { onclick: () => modal.close() }, 'Cancel')
+      )
+    );
+
+    var modal = showModal(content);
   }
 
   lineTotalRON(order, cmp, idx, supplierId){
