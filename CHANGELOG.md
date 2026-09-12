@@ -17,6 +17,15 @@ All notable changes to the Procurement Tool will be documented here.
   indication. Verified using a scratch test folder: confirmed normal moves
   still work silently, and confirmed a forced delete failure now logs a clear
   warning and correctly reproduces the orphaned-duplicate scenario.
+- Fixed: exportComparisonXLSX_ExcelJS() now writes real formulas for line-item
+  totals (materials rows 6-39, TRANSPORT row 40, DISCOUNT row 41), matching the
+  template's own convention (e.g. F6: =E6*C6), instead of pre-computed numbers.
+  This was a long-standing regression from an earlier workaround for a
+  shared-formula issue; the underlying cleanup (clearTemplateLineTotalFormulas)
+  already resolved that issue, so formulas are now safe to write again.
+  Verified by exporting a real comparison with multiple suppliers, transport,
+  and discount values: confirmed formulas appear correctly in Excel and totals
+  recalculate automatically when price or quantity is edited manually.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
