@@ -637,6 +637,51 @@ thead.sticky th {
 }
 
 /* ==========================================================================
+   Order Items – Material Name Autocomplete
+   ========================================================================== */
+.item-name-ac-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+}
+
+.item-name-ac-input {
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+.item-name-ac-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: #020617;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-top: 2px;
+  max-height: 400px;
+  overflow-y: auto;
+  min-width: 280px;
+  z-index: 20;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+}
+
+.item-name-ac-item {
+  padding: 4px 6px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-name-ac-item:hover,
+.item-name-ac-item.is-active {
+  background: #1e293b;
+}
+
+/* ==========================================================================
    Offer Upload (Drop Zone + Drag Animation)
    ========================================================================== */
 .offer-drop {
@@ -5708,39 +5753,152 @@ const cmp = comparisons[o.id] || null;    if (!cmp) {
   const q = resolveFromComparison();
 
   // --- Editable fields kept: name, qty, unit, expected date
-  const materialListId = `material-ac-${o.id}-${idx}`;
-
-  const nameInp = el('input', {
-    type:'text',
-    value: it.name || '',
-    list: materialListId,
-    placeholder:'Start typing material name...',
-    title:'Material suggestions are based on historical comparison quotes.',
-    oninput:(e)=>{ it.name = e.target.value; }
+  // Custom controlled autocomplete (replaces native <input list>+<datalist>,
+  // whose browser-controlled filtering was inconsistent - e.g. missing
+  // reasonable substring matches depending on word order). Matching here is
+  // simple, predictable substring search via the app's own norm() helper
+  // (case- and accent-insensitive), mirroring the existing supplier
+  // autocomplete pattern (see supSel / .cmp-sup-ac-* elsewhere in this file)
+  // for structure, styling, and keyboard navigation.
+  const nameWrap = el('span', {
+    class: 'item-name-ac-wrap'
   });
 
-  const materialList = el('datalist', { id: materialListId },
-    ...materialAutocompleteOptions.map(m => {
-      const latest = m.latest;
-      const winner = m.latestWinner;
-      const labelParts = [];
+  const nameInp = el('input', {
+    type: 'text',
+    class: 'item-name-ac-input',
+    value: it.name || '',
+    placeholder: 'Start typing material name...',
+    title: 'Material suggestions are based on historical comparison quotes.',
+    autocomplete: 'off'
+  });
 
-      labelParts.push(`${m.quotes} quote${m.quotes === 1 ? '' : 's'}`);
+  const nameList = el('div', {
+    class: 'item-name-ac-list',
+    style: { display: 'none', position: 'fixed' }
+  });
 
-      if (winner) {
-        labelParts.push(`last winner: ${winner.supplier}`);
+  const hideNameList = () => {
+    nameList.style.display = 'none';
+    if (nameList.parentNode) nameList.parentNode.removeChild(nameList);
+  };
+
+  let nameMatches = [];
+  let nameActiveIdx = -1;
+
+  const labelForOption = (m) => {
+    const latest = m.latest;
+    const winner = m.latestWinner;
+    const labelParts = [];
+    labelParts.push(`${m.quotes} quote${m.quotes === 1 ? '' : 's'}`);
+    if (winner) labelParts.push(`last winner: ${winner.supplier}`);
+    if (latest) labelParts.push(`latest: ${fmtMoney(latest.price)} ${latest.currency}`);
+    return labelParts.join(' • ');
+  };
+
+  const selectMaterial = (item) => {
+    it.name = item;
+    nameInp.value = item;
+    hideNameList();
+  };
+
+  const rebuildNameList = () => {
+    const q = norm(String(nameInp.value || '').trim());
+    const qWords = q.split(/\s+/).filter(Boolean);
+    nameMatches = (qWords.length
+      ? materialAutocompleteOptions.filter(m => {
+          const target = norm(m.item);
+          return qWords.every(w => target.includes(w));
+        })
+      : materialAutocompleteOptions
+    ).slice(0, 20);
+
+    nameList.innerHTML = '';
+    if (!nameMatches.length) {
+      hideNameList();
+      nameActiveIdx = -1;
+      return;
+    }
+
+    nameMatches.forEach((m, i) => {
+      const row = el('div', {
+        class: 'item-name-ac-item' + (i === nameActiveIdx ? ' is-active' : ''),
+        onclick: () => selectMaterial(m.item),
+        onmousedown: (e) => e.preventDefault(),
+        title: labelForOption(m)
+      }, `${m.item} — ${labelForOption(m)}`);
+      nameList.appendChild(row);
+    });
+
+    // Position as a fixed, viewport-anchored overlay (attached directly to
+    // <body>, not nested inside the table) so it's never clipped by the
+    // table or any other ancestor's boundaries. Opens above or below
+    // depending on actual available space, defaulting to above since item
+    // rows are usually near the bottom of the page.
+    const rect = nameInp.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const openAbove = spaceBelow < 260 && spaceAbove > spaceBelow;
+
+    nameList.style.left = rect.left + 'px';
+    nameList.style.width = Math.max(rect.width, 280) + 'px';
+    if (openAbove) {
+      nameList.style.top = 'auto';
+      nameList.style.bottom = (window.innerHeight - rect.top) + 'px';
+    } else {
+      nameList.style.top = rect.bottom + 'px';
+      nameList.style.bottom = 'auto';
+    }
+
+    if (!nameList.parentNode) document.body.appendChild(nameList);
+    nameList.style.display = 'block';
+  };
+
+  const moveNameActive = (delta) => {
+    if (!nameMatches.length) return;
+    if (nameActiveIdx === -1) nameActiveIdx = 0;
+    else nameActiveIdx = (nameActiveIdx + delta + nameMatches.length) % nameMatches.length;
+
+    const rowsEl = nameList.querySelectorAll('.item-name-ac-item');
+    rowsEl.forEach((r, i) => {
+      if (i === nameActiveIdx) r.classList.add('is-active');
+      else r.classList.remove('is-active');
+    });
+  };
+
+  nameInp.addEventListener('input', () => {
+    it.name = nameInp.value;
+    nameActiveIdx = -1;
+    rebuildNameList();
+  });
+
+  nameInp.addEventListener('focus', () => {
+    rebuildNameList();
+  });
+
+  nameInp.addEventListener('keydown', (e) => {
+    if (nameList.style.display === 'none') return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      moveNameActive(1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      moveNameActive(-1);
+    } else if (e.key === 'Enter') {
+      if (nameActiveIdx >= 0 && nameMatches[nameActiveIdx]) {
+        e.preventDefault();
+        selectMaterial(nameMatches[nameActiveIdx].item);
       }
+    } else if (e.key === 'Escape') {
+      hideNameList();
+    }
+  });
 
-      if (latest) {
-        labelParts.push(`latest: ${fmtMoney(latest.price)} ${latest.currency}`);
-      }
+  nameInp.addEventListener('blur', () => {
+    setTimeout(() => { hideNameList(); }, 120);
+  });
 
-      return el('option', {
-        value: m.item,
-        label: labelParts.join(' • ')
-      });
-    })
-  );
+  nameWrap.appendChild(nameInp);
 
   const qtyInp = el('input', {
     type:'number', step:'0.01', min:'0',
@@ -5787,7 +5945,7 @@ const cmp = comparisons[o.id] || null;    if (!cmp) {
 
   return el('tr', {},
     el('td', {}, String(idx+1)),
-    el('td', {}, nameInp, materialList),
+    el('td', {}, nameWrap),
     el('td', {}, qtyInp),
     el('td', {}, unitInp),
     el('td', {}, priceRO),   // read-only
