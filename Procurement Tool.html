@@ -10744,6 +10744,19 @@ window.Settings = Object.assign({
 }, loadSettings(), (window.Settings || {}));
 
 async function exportComparisonXLSX_ExcelJS(order, cmp){
+  // Resolve folder permission FIRST, before any slow workbook-building work,
+  // so if a folder picker genuinely needs to appear (stale/expired stored
+  // permission), it happens immediately after the click while the browser's
+  // "user activation" window is still fresh. Without this, the picker could
+  // end up buried several awaits deep later in the function (after template
+  // loading, price/ranking calculations, etc.), risking "User activation
+  // required" errors if that window has expired by then. This mirrors the
+  // exact same check already done later at the actual save step, so once
+  // resolved here, that later check succeeds immediately with no re-prompt.
+  if (Settings?.alwaysSaveExcelToOrder) {
+    await getBaseFolder();
+  }
+
   await ensureExcelJSLoaded();
 
   // 1) Get template (remembered handle if available, otherwise prompts once)
@@ -11469,8 +11482,31 @@ try {
       const key = order?.id || order?.rfq || order?.adhocCode || 'no-code';
       LastXlsxByOrder.set(key, { name: fileName });
 
+      // Copy the real Comparisons folder path to clipboard, same logic as
+      // the existing "Copy Order Path" button (Files section), just with
+      // the Comparisons subfolder appended - saves a manual copy-path step
+      // every time right after exporting.
+      let pathCopied = false;
+      try {
+        const segs = [...orderPathSegments(order), folderForKind('Comparison')];
+        const relPath = segs.join('\\');
+        const root = (window.Settings && Settings.explorerRootPath)
+          ? String(Settings.explorerRootPath).trim()
+          : '';
+        const normalizedRoot = root.replace(/[\\\/]+$/, '');
+        const fullPath = normalizedRoot ? (normalizedRoot + '\\' + relPath) : relPath;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(fullPath);
+          pathCopied = true;
+        }
+      } catch (eCopy) {
+        console.warn('Could not copy Comparisons folder path to clipboard:', eCopy);
+      }
+
       if (typeof notify === 'function') {
-        notify('success', `Excel saved to Order → Comparisons/${fileName}`);
+        notify('success', pathCopied
+          ? `Excel saved to Order → Comparisons/${fileName} (folder path copied to clipboard)`
+          : `Excel saved to Order → Comparisons/${fileName}`);
       }
 
       saved = true;
