@@ -26,6 +26,19 @@ All notable changes to the Procurement Tool will be documented here.
   Verified by exporting a real comparison with multiple suppliers, transport,
   and discount values: confirmed formulas appear correctly in Excel and totals
   recalculate automatically when price or quantity is edited manually.
+- Fixed: comparison export no longer requires re-selecting comparison list.xlsx
+  every time. The app now remembers the template file via a persistent File
+  System Access handle (same pattern already used for the Orders storage
+  folder), and always reads the file's current content on each export - so
+  future edits to the template are automatically reflected without any code
+  changes. Handles three edge cases distinctly: permission denied (clear error,
+  stops), template file moved/renamed/deleted (clear message, prompts to
+  re-select), and unsupported browsers (falls back to prior per-export prompt
+  behavior). Added a "Change Comparison Template" option to the Settings menu
+  for intentionally switching files. Verified: first-time pick and save, silent
+  reuse on subsequent exports, manual template change via the new menu option,
+  and the stale-file recovery path (tested by temporarily renaming the template
+  file) - all confirmed working.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
