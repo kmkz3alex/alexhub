@@ -93,6 +93,35 @@ All notable changes to the Procurement Tool will be documented here.
   catching and fixing two positioning issues (clipped by the table's own
   boundaries, then requiring word-order-independent matching) before the
   final version was confirmed working correctly in all scenarios.
+- Added: comparison export now automates the manual Excel touch-up step that
+  was previously done by hand after every single export (identified via a
+  full workflow walkthrough with the user - this turned out to be the
+  biggest time sink in their whole process, entirely outside the app).
+  Four pieces: (1) DATE:/Request Number: labels dynamically position above
+  whichever supplier column is actually last (previously hardcoded for
+  exactly 3 suppliers), with explicit Calibri 20pt formatting - bold labels,
+  normal-weight values. DATE auto-fills with today's date; Request Number
+  auto-fills from the order's RFQ, or stays empty for ad-hoc orders. (2) Row
+  55 auto-generates L1..LN supplier rankings by total WITHOUT VAT (so
+  tax-exempt suppliers aren't misrepresented), reusing the exact calculation
+  already powering the "Best total" badge in the app. (3) Winner
+  highlighting: a single overall winner gets their header name cell colored
+  green; winners split across materials get only their specific winning
+  price cell colored, not the total or the whole column. (4) Missing prices
+  (0/no quote) are auto-filled with the lowest quoted price among other
+  suppliers for that material, correctly converted through the comparison's
+  exchange rates into the receiving supplier's own currency, with the
+  substituted number's text colored red to clearly mark it as borrowed
+  rather than a genuine quote - this only affects the exported file, never
+  the app's actual stored data. Two real bugs were caught and fixed during
+  testing rather than after: an ExcelJS shared-style-object mutation bug
+  where coloring one cell bled into the entire header row (fixed by applying
+  the same defensive style-cloning pattern already used elsewhere in this
+  function), and a currency bug where a borrowed price was copied as a raw
+  number instead of being converted through the exchange rate first (fixed
+  by normalizing all prices to RON for comparison, then converting the
+  chosen value back into the receiving supplier's own currency). Verified
+  across many real test scenarios covering every piece and both bugs' fixes.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
