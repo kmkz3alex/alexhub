@@ -189,6 +189,28 @@ All notable changes to the Procurement Tool will be documented here.
   actual filtering can never drift out of sync with each other going
   forward. Verified across many real test scenarios covering every piece
   of this change.
+- Fixed/Removed: further cleanup of per-item delivery tracking, found while
+  reviewing the Tracking tab after the previous delivered-status fix. (1)
+  The Tracking tab row was showing two separate "Delivered" pills side by
+  side - the new order-level pill from the previous fix, plus the existing
+  order status pill (o.status), which could also independently say
+  "Delivered" (or disagree, e.g. showing stale "Partially Delivered"). The
+  duplicate pill has been removed; the remaining status pill is now
+  color-coded instead (green for Delivered, info-blue for Ordered, plain
+  for Draft). (2) recomputeStatus() no longer produces "Partially
+  Delivered" at all - this state was computed from unused per-item
+  deliveredQty/delivered fields; status is now purely Delivered (manual
+  flag) > Ordered > Draft, consistent with the order-level flag being the
+  single source of truth. (3) The same "Partially delivered" label was also
+  removed from the Orders tab's status pills, which computed it
+  independently from the same unused per-item fields. (4) The Tracking
+  tab's "Items" quick-glance modal (opened via the Items button, for
+  checking item details without leaving the tab) is now read-only -
+  per-item delivered checkboxes and the Save button were removed, since
+  that Save button recomputed and could silently overwrite the order-level
+  Delivered flag from stale per-item checkbox state, a real risk that no
+  longer exists once the checkboxes are gone. Verified across multiple
+  real test scenarios covering all four changes.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
