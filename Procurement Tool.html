@@ -4761,12 +4761,14 @@ class MaterialManager {
         suppliers: new Set(),
         winners: 0,
         lowestRow: null,
-        lastRow: null
+        lastRow: null,
+        allRows: []
       };
 
       cur.quotes += 1;
       if (r.supplier) cur.suppliers.add(r.supplier);
       if (r.isWinner) cur.winners += 1;
+      cur.allRows.push(r);
 
       if (!cur.lowestRow || this._priceBase(r) < this._priceBase(cur.lowestRow)) {
         cur.lowestRow = r;
@@ -4783,6 +4785,54 @@ class MaterialManager {
       this._priceBase(a.lowestRow) - this._priceBase(b.lowestRow) ||
       String(a.item).localeCompare(String(b.item))
     );
+  }
+
+  _showMaterialOrders(group){
+    const rows = (group.allRows || []).slice().sort((a,b) =>
+      String(b.date || '').localeCompare(String(a.date || ''))
+    );
+
+    const list = el('div', { style:{ maxHeight:'60vh', overflow:'auto', padding:'6px 0' } },
+      ...(rows.length
+        ? rows.map(r => el('div', {
+            class:'flex',
+            style:{
+              padding:'8px 0',
+              borderBottom:'1px solid var(--border)',
+              justifyContent:'space-between',
+              alignItems:'center',
+              gap:'12px'
+            }
+          },
+            el('div', {},
+              el('div', { style:{ fontWeight:'600' } }, r.supplier || '(unknown supplier)'),
+              el('div', { class:'muted', style:{ fontSize:'12px' } },
+                `${fmtMoney(r.price || 0)} ${r.currency || ''} • ${r.orderRef || ''} • ${r.date ? String(r.date).slice(0,10) : ''}`
+              )
+            ),
+            el('button', {
+              class:'btn secondary',
+              onclick:()=>this._openOrder(r)
+            }, 'Open Order')
+          ))
+        : [
+            el('div', { class:'muted', style:{ padding:'8px 0', fontStyle:'italic' } }, 'No orders found for this material.')
+          ]
+      )
+    );
+
+    let modal;
+    const footer = el('div', { class:'flex', style:{ justifyContent:'flex-end', marginTop:'8px' } },
+      el('button', { class:'btn secondary', onclick:()=>{ if (modal) modal.close(); } }, 'Close')
+    );
+
+    const modalContent = el('div', { class:'modal-content', style:{maxWidth:'640px'} },
+      el('h3', {}, `Orders — ${group.item || ''}`),
+      list,
+      footer
+    );
+
+    modal = showModal(modalContent);
   }
 
   _csvCell(value){
@@ -4818,7 +4868,6 @@ class MaterialManager {
 
     const onlyWinners = !!this.state._materialsOnlyWinners;
     const supplierFilter = this.state._materialsSupplierFilter || '';
-    const groupByMaterial = !!this.state._materialsGroupByMaterial;
 
     const supplierOptions = (Array.isArray(this.state.suppliers) ? this.state.suppliers : [])
       .slice()
@@ -4860,29 +4909,104 @@ class MaterialManager {
         }),
         ' Only winners'
       ),
-      el('label', { style:{ marginLeft:'12px' } }, 'Supplier ',
-        el('select', {
-          value: supplierFilter,
-          onchange:(e)=>{
-            this.state._materialsSupplierFilter = e.target.value || '';
-            render();
-          }
-        },
-          el('option', { value:'' }, 'All suppliers'),
-          ...supplierOptions.map(s => el('option', { value:s.id }, s.company || '(Unnamed supplier)'))
-        )
-      ),
-      el('label', { style:{ marginLeft:'12px', userSelect:'none' } },
-        el('input', {
-          type:'checkbox',
-          checked: groupByMaterial,
-          onchange:(e)=>{
-            this.state._materialsGroupByMaterial = !!e.target.checked;
-            render();
-          }
-        }),
-        ' Group materials'
-      ),
+      (() => {
+        // Supplier filter as a type-to-filter search box (replaces the plain
+        // <select>), reusing the same floating-overlay autocomplete pattern
+        // already proven for material name entry elsewhere in the app: word-
+        // token matching, keyboard navigation, click-to-select, and a clean
+        // way to clear back to "All suppliers".
+        const wrap = el('span', {
+          class: 'item-name-ac-wrap',
+          style:{ marginLeft:'12px', display:'inline-block', minWidth:'220px' }
+        });
+
+        const currentSupplierName = supplierFilter
+          ? (supplierOptions.find(s => s.id === supplierFilter)?.company || '(Unnamed supplier)')
+          : '';
+
+        const inp = el('input', {
+          type: 'text',
+          class: 'item-name-ac-input',
+          placeholder: 'All suppliers',
+          value: currentSupplierName,
+          autocomplete: 'off'
+        });
+
+        const list = el('div', { class: 'item-name-ac-list', style:{ display:'none', position:'fixed' } });
+
+        let matches = [];
+        let activeIdx = -1;
+
+        const hideList = () => {
+          list.style.display = 'none';
+          if (list.parentNode) list.parentNode.removeChild(list);
+        };
+
+        const selectSupplier = (id, name) => {
+          this.state._materialsSupplierFilter = id || '';
+          inp.value = name || '';
+          hideList();
+          render();
+        };
+
+        const rebuildList = () => {
+          const qs = norm(String(inp.value || '').trim());
+          const base = [{ id:'', company:'All suppliers' }, ...supplierOptions];
+          matches = (qs
+            ? base.filter(s => norm(s.company || '').includes(qs))
+            : base
+          ).slice(0, 20);
+
+          list.innerHTML = '';
+          if (!matches.length) { hideList(); activeIdx = -1; return; }
+
+          matches.forEach((s, i) => {
+            const row = el('div', {
+              class: 'item-name-ac-item' + (i === activeIdx ? ' is-active' : ''),
+              onclick: () => selectSupplier(s.id, s.id ? s.company : ''),
+              onmousedown: (e) => e.preventDefault()
+            }, s.company || '(Unnamed supplier)');
+            list.appendChild(row);
+          });
+
+          const rect = inp.getBoundingClientRect();
+          list.style.left = rect.left + 'px';
+          list.style.top = rect.bottom + 'px';
+          list.style.width = Math.max(rect.width, 220) + 'px';
+          if (!list.parentNode) document.body.appendChild(list);
+          list.style.display = 'block';
+        };
+
+        const moveActive = (delta) => {
+          if (!matches.length) return;
+          if (activeIdx === -1) activeIdx = 0;
+          else activeIdx = (activeIdx + delta + matches.length) % matches.length;
+          const rowsEl = list.querySelectorAll('.item-name-ac-item');
+          rowsEl.forEach((r, i) => {
+            if (i === activeIdx) r.classList.add('is-active');
+            else r.classList.remove('is-active');
+          });
+        };
+
+        inp.addEventListener('input', () => { activeIdx = -1; rebuildList(); });
+        inp.addEventListener('focus', () => rebuildList());
+        inp.addEventListener('keydown', (e) => {
+          if (list.style.display === 'none') return;
+          if (e.key === 'ArrowDown') { e.preventDefault(); moveActive(1); }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); moveActive(-1); }
+          else if (e.key === 'Enter') {
+            if (activeIdx >= 0 && matches[activeIdx]) {
+              e.preventDefault();
+              const s = matches[activeIdx];
+              selectSupplier(s.id, s.id ? s.company : '');
+            }
+          } else if (e.key === 'Escape') { hideList(); }
+        });
+        inp.addEventListener('blur', () => { setTimeout(() => hideList(), 120); });
+
+        wrap.appendChild(inp);
+        return wrap;
+      })(),
       el('button', {
         class:'btn secondary',
         style:{ marginLeft:'12px' },
@@ -4896,11 +5020,12 @@ class MaterialManager {
 
     const allRows = this._collectRows();
 
+    const materialShowCount = this.state._materialShowCount || 100;
     const searchedRows = q
       ? allRows.filter(r => this._rowMatches(r, q))
-      : allRows.slice(0, 200);
+      : allRows;
 
-    const rows = searchedRows
+    const filteredRows = searchedRows
       .filter(r => {
         if (onlyWinners && !r.isWinner) return false;
         if (supplierFilter && r.supplierId !== supplierFilter) return false;
@@ -4912,56 +5037,14 @@ class MaterialManager {
         return ar - br || String(b.date || '').localeCompare(String(a.date || ''));
       });
 
-    this._lastMaterialRows = rows;
+    this._lastMaterialRows = filteredRows;
+
+    const allGroups = this._groupRows(filteredRows);
+    const groups = q ? allGroups : allGroups.slice(0, materialShowCount);
+    const rows = filteredRows; // kept for _summary()/statsBox/rfqIntelBox, which use the flat list
 
     const s = this._summary(rows);
 
-    const summary = el('div', { class:'material-summary' },
-
-      el('span', { class:'pill pill-info' },
-        `Rows: ${s.count}`
-      ),
-
-      el('span', { class:'pill' },
-        `Last Quote: ${
-          s.last
-            ? `${fmtMoney(s.last.price)} ${s.last.currency} (${s.last.supplier})`
-            : '—'
-        }`
-      ),
-
-      el('span', { class:'pill pill-ok' },
-        `Lowest: ${
-          s.lowestRow
-            ? `${fmtMoney(s.lowestRow.price)} ${s.lowestRow.currency} (${s.lowestRow.supplier}) / ${fmtMoney(s.lowestRow.priceRON)} RON`
-            : '—'
-        }`
-      ),
-
-      el('span', { class:'pill pill-warn' },
-        `Highest: ${
-          s.highestRow
-            ? `${fmtMoney(s.highestRow.price)} ${s.highestRow.currency} (${s.highestRow.supplier}) / ${fmtMoney(s.highestRow.priceRON)} RON`
-            : '—'
-        }`
-      ),
-
-      el('span', { class:'pill' },
-        `Average: ${
-          s.average != null
-            ? fmtMoney(s.average)
-            : '—'
-        }`
-      ),
-
-      el('span', { class:'pill pill-ok' },
-        `Last Winner: ${
-          s.lastWinner
-            ? s.lastWinner.supplier
-            : '—'
-        }`
-      )
-    );
 
     const supplierStats = this._supplierStats(rows);
     const winnerCount = rows.filter(r => r.isWinner).length;
@@ -4976,14 +5059,10 @@ class MaterialManager {
     const kpiGrid = el('div', { class:'material-kpi-grid' },
       kpiCard('Rows', String(s.count)),
       kpiCard('Suppliers', String(supplierStats.length)),
-      kpiCard('Winner quotes', String(winnerCount)),
-      kpiCard('Lowest', s.lowestRow ? `${fmtMoney(s.lowestRow.price)} ${s.lowestRow.currency}` : '—'),
-      kpiCard('Highest', s.highestRow ? `${fmtMoney(s.highestRow.price)} ${s.highestRow.currency}` : '—')
+      kpiCard('Winner quotes', String(winnerCount))
     );
 
     const statsBox = el('div', { class:'material-summary' },
-      el('span', { class:'pill pill-info' }, `Suppliers: ${supplierStats.length}`),
-      el('span', { class:'pill pill-ok' }, `Winner quotes: ${winnerCount}`),
       ...supplierStats.slice(0, 8).map(st =>
         el('span', { class: st.winners ? 'pill pill-ok' : 'pill' },
           `${st.supplier}: ${st.quotes} quote${st.quotes === 1 ? '' : 's'}${st.winners ? ` / ${st.winners} winner${st.winners === 1 ? '' : 's'}` : ''}`
@@ -4991,75 +5070,40 @@ class MaterialManager {
       )
     );
 
-    const table = groupByMaterial
-      ? el('table', { class:'material-list-compact' },
-          el('thead', {}, el('tr', {},
-            el('th', {}, 'Material'),
-            el('th', {}, 'Quotes'),
-            el('th', {}, 'Suppliers'),
-            el('th', {}, 'Winners'),
-            el('th', {}, 'Lowest Quote'),
-            el('th', {}, 'Best Supplier'),
-            el('th', {}, 'Last Quote'),
-            el('th', {}, 'Last Order'),
-            el('th', {}, 'Actions')
-          )),
-          el('tbody', {},
-            ...(rows.length ? this._groupRows(rows).map(g => el('tr', {},
-              el('td', { title:g.item }, g.item || ''),
-              el('td', {}, String(g.quotes || 0)),
-              el('td', {}, String(g.suppliers.size || 0)),
-              el('td', {}, String(g.winners || 0)),
-              el('td', {}, g.lowestRow ? `${fmtMoney(g.lowestRow.price)} ${g.lowestRow.currency}` : ''),
-              el('td', { title:g.lowestRow?.supplier || '' }, g.lowestRow?.supplier || ''),
-              el('td', {}, g.lastRow ? `${fmtMoney(g.lastRow.price)} ${g.lastRow.currency}` : ''),
-              el('td', { title:g.lastRow?.orderRef || '' }, g.lastRow?.orderRef || ''),
-              el('td', {},
-                g.lastRow
-                  ? el('button', { class:'btn secondary', onclick:()=>this._openOrder(g.lastRow) }, 'Open order')
-                  : ''
-              )
-            )) : [
-              el('tr', {}, el('td', { colSpan:9, class:'muted' }, q ? 'No matching materials found.' : 'No historical materials found yet.'))
-            ])
+    const table = el('table', { class:'material-list-compact' },
+      el('thead', {}, el('tr', {},
+        el('th', {}, 'Material'),
+        el('th', {}, 'Best Supplier'),
+        el('th', {}, 'Price'),
+        el('th', {}, 'Currency'),
+        el('th', {}, 'Actions')
+      )),
+      el('tbody', {},
+        ...(groups.length ? groups.map(g => el('tr', {},
+          el('td', { title:g.item }, g.item || ''),
+          el('td', { title:g.lowestRow?.supplier || '' }, g.lowestRow?.supplier || ''),
+          el('td', {}, g.lowestRow ? fmtMoney(g.lowestRow.price) : ''),
+          el('td', {}, g.lowestRow?.currency || ''),
+          el('td', {},
+            el('button', { class:'btn secondary', onclick:()=>this._showMaterialOrders(g) }, 'View Orders')
           )
+        )) : [
+          el('tr', {}, el('td', { colSpan:5, class:'muted' }, q ? 'No matching materials found.' : 'No historical materials found yet.'))
+        ])
+      )
+    );
+
+    const showMoreBtn = (!q && allGroups.length > materialShowCount)
+      ? el('div', { style:{ display:'flex', justifyContent:'center', padding:'12px 0' } },
+          el('button', {
+            class:'btn secondary',
+            onclick: () => {
+              this.state._materialShowCount = materialShowCount + 100;
+              render();
+            }
+          }, `Show 100 more (${allGroups.length - materialShowCount} remaining)`)
         )
-      : el('table', { class:'material-list-compact' },
-          el('thead', {}, el('tr', {},
-            el('th', {}, 'Item'),
-            el('th', {}, 'Supplier'),
-            el('th', {}, 'Price'),
-            el('th', {}, 'Currency'),
-            el('th', {}, 'Qty'),
-            el('th', {}, 'Unit'),
-            el('th', {}, 'Order'),
-            el('th', {}, 'Title'),
-            el('th', {}, 'Date'),
-            el('th', {}, 'Source'),
-            el('th', {}, 'Winner?'),
-            el('th', {}, 'Actions')
-          )),
-          el('tbody', {},
-            ...(rows.length ? rows.map(r => el('tr', {},
-              el('td', { title:r.item }, r.item || ''),
-              el('td', { title:r.supplier }, r.supplier || ''),
-              el('td', {}, fmtMoney(r.price || 0)),
-              el('td', {}, r.currency || ''),
-              el('td', {}, String(r.qty || '')),
-              el('td', {}, r.unit || ''),
-              el('td', { title:r.orderRef }, r.orderRef || ''),
-              el('td', { title:r.orderTitle }, r.orderTitle || ''),
-              el('td', {}, r.date ? String(r.date).slice(0,10) : ''),
-              el('td', {}, r.source || ''),
-              el('td', {}, r.isWinner ? el('span', { class:'pill pill-ok' }, 'Yes') : ''),
-              el('td', {},
-                el('button', { class:'btn secondary', onclick:()=>this._openOrder(r) }, 'Open order')
-              )
-            )) : [
-              el('tr', {}, el('td', { colSpan:12, class:'muted' }, q ? 'No matching materials found.' : 'No historical materials found yet.'))
-            ])
-          )
-        );
+      : null;
 
     return el('div', { class:'materials-page' },
       el('div', {},
@@ -5069,11 +5113,11 @@ class MaterialManager {
       toolbar,
       kpiGrid,
       el('div', { class:'material-intel-card' },
-        summary,
         statsBox,
         rfqIntelBox
       ),
-      el('div', { class:'material-table-card' }, table)
+      el('div', { class:'material-table-card' }, table),
+      showMoreBtn
     );
   }
 }
