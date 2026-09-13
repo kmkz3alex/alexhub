@@ -2031,22 +2031,13 @@ function recomputeStatus(o){
     ? o.statusFlags
     : { ordered:false, delivered:false, invoiced:false, paid:false };
 
-  const items = Array.isArray(o.items) ? o.items.map(normalizeItem) : [];
-
-  const anyDelivered = items.some(it => clampNonNeg(it.deliveredQty) > 0 || !!it.delivered);
-  const allDelivered = items.length > 0 && items.every(it => {
-    const qty = clampNonNeg(it.qtyTotal);
-    const deliveredQty = clampNonNeg(it.deliveredQty);
-    return qty > 0 && deliveredQty >= qty;
-  });
-
-  // Precedence: manual flag > all items > partial > ordered > draft
+  // Precedence: manual Delivered flag > Ordered flag > Draft. Per-item
+  // delivery tracking (deliveredQty/delivered on individual items) is no
+  // longer used, so "Partially Delivered" has been removed - matches the
+  // same order-level-flag-as-source-of-truth principle already applied to
+  // the Tracking tab.
   if (o.statusFlags.delivered) {
     o.status = 'Delivered';
-  } else if (allDelivered) {
-    o.status = 'Delivered';
-  } else if (anyDelivered) {
-    o.status = 'Partially Delivered';
   } else if (o.statusFlags.ordered) {
     o.status = 'Ordered';
   } else {
@@ -5481,26 +5472,6 @@ openBtn.onclick = () => {
             const sf = (o.statusFlags && typeof o.statusFlags === 'object') ? o.statusFlags : { ordered:false, delivered:false, invoiced:false, paid:false };
             const row = [];
 
-    // Optional text label: show "Partially delivered" if some but not all items delivered
-const items = Array.isArray(o.items) ? o.items.map(normalizeItem) : [];
-const tCount = items.length || 0;
-
-const anyPartialQty = items.some(it => {
-  const qty = clampNonNeg(it.qtyTotal);
-  const deliveredQty = clampNonNeg(it.deliveredQty);
-  return qty > 0 && deliveredQty > 0 && deliveredQty < qty;
-});
-
-const fullyDeliveredCount = items.filter(it => {
-  const qty = clampNonNeg(it.qtyTotal);
-  const deliveredQty = clampNonNeg(it.deliveredQty);
-  return qty > 0 && deliveredQty >= qty;
-}).length;
-
-if (tCount > 0 && (anyPartialQty || (fullyDeliveredCount > 0 && fullyDeliveredCount < tCount))) {
-  row.push(el('span', { class:'pill pill-warn', style:{ marginRight:'8px' } }, 'Partially delivered'));
-}
-
             if (sf.ordered)   row.push(el('span', { class:'pill pill-info',  style:{ marginLeft:'4px' } }, 'Ordered'));
             if (sf.delivered) row.push(el('span', { class:'pill pill-ok',    style:{ marginLeft:'4px' } }, 'Delivered'));
             if (sf.invoiced)  row.push(el('span', { class:'pill pill-info',  style:{ marginLeft:'4px' } }, 'Invoiced'));
@@ -8099,9 +8070,13 @@ const table = el('table', {},
       const isPaid = !!inv.paid;
       const hasInvoice = !!(inv.number || inv.amount != null || inv.paid);
 
-      // Decide label/color for "Visual Status"
+      // Status pill, colored by value: green for Delivered, blue-ish info
+      // for Ordered, plain for Draft.
       const vStatus = o.status || 'Draft';
-      const vStatusNode = el('span', { class: 'pill' }, vStatus);
+      const statusColorClass =
+        vStatus === 'Delivered' ? 'pill-ok' :
+        vStatus === 'Ordered'   ? 'pill-info' : '';
+      const vStatusNode = el('span', { class: ('pill ' + statusColorClass).trim() }, vStatus);
 
       // If the order is flagged as delivered at header level, do not offer "Mark Delivered" again,
       // even if some legacy items are not marked delivered.
@@ -8161,86 +8136,48 @@ noteBtn.onclick = () => {
 const itemsBtn = el('button', {
   class: 'btn secondary',
   style: { padding:'4px 8px', fontSize:'12px', marginLeft:'6px' },
-  title: 'Mark individual items delivered'
+  title: 'View items in this order'
 }, 'Items');
 itemsBtn.onclick = () => {
   const items = Array.isArray(o.items) ? o.items : [];
 
-const list = el('div', { style:{ maxHeight:'60vh', overflow:'auto', padding:'6px 0' } },
-  ...(items.length
-    ? items.map((it, idx) => el('div', {
-        class:'flex',
-        style:{
-          padding:'6px 0',
-          borderBottom:'1px solid var(--border)',
-          justifyContent:'space-between',
-          alignItems:'center',
-          gap:'12px'
-        }
-      },
-        el('div', {},
+  // Read-only quick-glance list - a convenience so item details can be
+  // checked without leaving the Tracking tab. Per-item delivered tracking
+  // was removed here (the order-level Delivered flag is the sole source of
+  // truth now); this also removes a real risk where saving here could
+  // silently overwrite an already-correct order-level Delivered flag.
+  const list = el('div', { style:{ maxHeight:'60vh', overflow:'auto', padding:'6px 0' } },
+    ...(items.length
+      ? items.map((it, idx) => el('div', {
+          style:{
+            padding:'6px 0',
+            borderBottom:'1px solid var(--border)'
+          }
+        },
           el('div', { style:{ fontWeight:'600' } }, it.name || `(Item ${idx+1})`),
           el('div', { class:'muted', style:{ fontSize:'12px' } },
             `Qty: ${Number(it.qtyTotal ?? it.qty) || 0} ${it.unit || ''}`
           )
-        ),
-        el('label', { class:'flex', style:{ gap:'6px', alignItems:'center' } },
-          el('input', {
-            type:'checkbox',
-            checked: !!it.delivered,
-            onchange:(e)=>{
-              it.delivered = !!e.target.checked;
-              if (it.delivered) {
-                if (!it.deliveredAt) it.deliveredAt = new Date().toISOString();
-              } else {
-                // optional: clear timestamp on un-deliver
-                // it.deliveredAt = '';
-              }
-            }
-          }),
-          el('span', {}, 'Delivered')
-        )
-      ))
-    : [
-        el('div', {
-          class:'muted',
-          style:{ padding:'8px 0', fontStyle:'italic' }
-        }, 'No items in this order yet.')
-      ]
-  )
-);
+        ))
+      : [
+          el('div', {
+            class:'muted',
+            style:{ padding:'8px 0', fontStyle:'italic' }
+          }, 'No items in this order yet.')
+        ]
+    )
+  );
 
   let modal;
   const footer = el('div', { class:'flex', style:{ justifyContent:'flex-end', gap:'8px', marginTop:'8px' } },
     el('button', {
       class:'btn secondary',
       onclick:()=> { if (modal) modal.close(); }
-    }, 'Cancel'),
-    el('button', {
-      class:'btn',
-      onclick:()=> {
-        // recompute order delivered flag based on items
-        o.statusFlags = (o.statusFlags && typeof o.statusFlags === 'object')
-          ? o.statusFlags
-          : { ordered:false, delivered:false, invoiced:false, paid:false };
-        const allDelivered = items.length ? items.every(it => it.delivered) : false;
-        o.statusFlags.delivered = allDelivered;
-
-        if (typeof recomputeStatus === 'function') {
-          recomputeStatus(o);
-        }
-        if (typeof syncStatusUIFromFlags === 'function') {
-          syncStatusUIFromFlags(o);
-        }
-        save();
-        render();
-        if (modal) modal.close();
-      }
-    }, 'Save')
+    }, 'Close')
   );
 
   const modalContent = el('div', { class:'modal-content', style:{maxWidth:'720px'} },
-    el('h3', {}, 'Delivered items'),
+    el('h3', {}, 'Items'),
     list,
     footer
   );
@@ -8293,7 +8230,6 @@ const actionCell = canMarkDelivered
         el('td', {}, supplier || ''),
         el('td', {},
           el('div', { class:'flex', style:{ alignItems:'center', gap:'6px' } },
-            el('span', { class: isHeaderDelivered ? 'pill pill-ok' : 'pill' }, isHeaderDelivered ? 'Delivered' : 'Not delivered'),
             vStatusNode
           )
         ),
