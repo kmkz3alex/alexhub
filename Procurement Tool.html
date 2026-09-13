@@ -6179,6 +6179,18 @@ const cmp = comparisons[o.id] || null;    if (!cmp) {
           const sel = el('select', {
             onchange:(e)=>{
               o.stage = e.target.value;
+              // Auto-mark Delivered when the stage is set to Completed, since
+              // an order should never be Completed without being delivered.
+              // Deliberately one-directional: changing the stage AWAY from
+              // Completed later does not un-mark delivered, since that would
+              // have been a real, deliberate delivery event.
+              if (o.stage === 'Completed') {
+                o.statusFlags = (o.statusFlags && typeof o.statusFlags === 'object')
+                  ? o.statusFlags
+                  : { ordered:false, delivered:false, invoiced:false, paid:false };
+                o.statusFlags.delivered = true;
+              }
+              if (typeof recomputeStatus === 'function') recomputeStatus(o);
               if (typeof saveSoon === 'function') saveSoon(); else if (typeof save === 'function') save();
             }
           }, ...STAGES.map(s => el('option', { value:s }, s)));
@@ -7316,6 +7328,24 @@ function badgeForDays(days, deliveredPercent){
   return [el('span', { class:'pill pill-info' }, 'Scheduled'), 'Scheduled'];
 }
 
+function trackingCategoryOf(o){
+  // Categorizes an order into exactly one bucket: 'late', 'dueSoon',
+  // 'scheduled', 'noDate', or 'delivered'. Single source of truth, reused
+  // by both the summary chip counts and the chip-based filtering, so they
+  // can never drift out of sync with each other.
+  const statusFlags = (o.statusFlags && typeof o.statusFlags === 'object') ? o.statusFlags : null;
+  const isDelivered = !!(statusFlags && statusFlags.delivered);
+  if (isDelivered) return 'delivered';
+
+  const expISO = pickExpectedDate(o);
+  const days = daysFromToday(expISO);
+
+  if (days === null) return 'noDate';
+  if (days < 0) return 'late';
+  if (days <= 7) return 'dueSoon';
+  return 'scheduled';
+}
+
 function paymentTermsToDays(txt){
   if (!txt || typeof txt !== 'string') return null;
 
@@ -7555,11 +7585,14 @@ const toolbar = el('div', { class:'toolbar' },
 );
 
 // --- Stage filter for Tracking (define ONCE) ---
+// Default: only Ongoing and Completed count toward tracking/summary chips.
+// On hold and Canceled are still available to toggle on manually (e.g. for
+// a quick look at what's on hold or canceled), just off by default.
 const tStageFilter = (this.state._trackingStageFilter ||= {
   'Ongoing':   true,
-  'On hold':   true,
+  'On hold':   false,
   'Completed': true,
-  'Canceled':  true
+  'Canceled':  false
 });
 
 const tFilterBar = el('div', { class:'stage-filter-bar' },
@@ -7584,9 +7617,13 @@ const stageLabel = (s)=>({
   'Canceled':  'Canceled'
 }[s] || s);
 
-// Filter: stage + search + optional "Only Late" / "Due soon" toggles
-const lateOnly = !!this.state._trackingLateOnly;
-const dueSoonOnly = !!this.state._trackingDueSoonOnly;
+// Filter: stage + search + category filters (multi-select: Late, Due soon,
+// Scheduled, No date, Delivered - clicking chips below toggles these).
+// OR logic across whatever's selected; none selected shows everything.
+const categoryFilter = (this.state._trackingCategoryFilter ||= {
+  late: false, dueSoon: false, scheduled: false, noDate: false, delivered: false
+});
+const anyCategorySelected = Object.values(categoryFilter).some(Boolean);
 
 const list = (this.state.orders || []).filter(o=>{
   // 1) Stage filter
@@ -7605,26 +7642,14 @@ const list = (this.state.orders || []).filter(o=>{
       match(supplierName, q) ||
       match(o.invoice?.number, q) ||
       match(paidStr, q) ||
-      match(o.note, q);     // NEW
+      match(o.note, q);
     if (!hit) return false;
   }
 
-  // 3) Toggle filters (Only Late / Due soon) based on expected date and delivery %
-  if (lateOnly || dueSoonOnly) {
-    const items = Array.isArray(o.items) ? o.items : [];
-    const deliveredItems = items.filter(it => it.delivered).length;
-    const totalItems = items.length || 1;
-    const deliveredPercent = Math.round((deliveredItems / totalItems) * 100);
-
-    const expISO = pickExpectedDate(o);
-    const days   = daysFromToday(expISO);
-
-    // If no date, never count as late/due-soon
-    if (days === null) return false;
-    if (deliveredPercent >= 100) return false; // fully delivered != late/due-soon
-
-    if (lateOnly)    return days < 0;
-    if (dueSoonOnly) return days >= 0 && days <= 7;
+  // 3) Category filter (Late / Due soon / Scheduled / No date / Delivered)
+  if (anyCategorySelected) {
+    const cat = trackingCategoryOf(o);
+    if (!categoryFilter[cat]) return false;
   }
 
   return true;
@@ -7992,60 +8017,33 @@ if (!pList.length) {
 // ---- end Payments branch; Deliveries continues below as before ----
 
 
-// --- New: "Only Late" / "Due soon" toggles ---
-const toggleBar = el('div', { class:'toggle-bar' },
-  el('button', {
-    class: 'toggle-chip' + (lateOnly ? ' active' : ''),
-    title: 'Show only orders with expected date in the past (not fully delivered)',
-    onclick: () => {
-      this.state._trackingLateOnly = !lateOnly;
-      if (this.state._trackingLateOnly) this.state._trackingDueSoonOnly = false;
-      render();
-    }
-  }, (lateOnly ? '✓ ' : '') + 'Only Late'),
-  el('button', {
-    class: 'toggle-chip' + (dueSoonOnly ? ' active' : ''),
-    title: 'Show only orders due in the next 7 days (not fully delivered)',
-    onclick: () => {
-      this.state._trackingDueSoonOnly = !dueSoonOnly;
-      if (this.state._trackingDueSoonOnly) this.state._trackingLateOnly = false;
-      render();
-    }
-  }, (dueSoonOnly ? '✓ ' : '') + 'Due soon (≤7d)')
-);
-container.appendChild(toggleBar);
-
-// --- New: Summary chips (Late / Due soon / Scheduled / No date / Delivered) for the *filtered by stage+search* list ---
+// --- Summary chips (Late / Due soon / Scheduled / No date / Delivered) -
+// clickable, multi-select filters. Selecting one or more shows only
+// matching orders (OR logic); none selected shows everything. Reuses
+// .toggle-chip for consistent active-state styling with the rest of the app.
 const counters = (list.length ? list : []).reduce((acc, o) => {
-  const items = Array.isArray(o.items) ? o.items : [];
-  const deliveredItems = items.filter(it => it.delivered).length;
-  const totalItems = items.length || 1;
-  const deliveredPercent = Math.round((deliveredItems / totalItems) * 100);
-
-  const statusFlags = (o.statusFlags && typeof o.statusFlags === 'object') ? o.statusFlags : null;
-  const isHeaderDelivered = !!(statusFlags && statusFlags.delivered);
-
-  if (isHeaderDelivered || deliveredPercent >= 100) {
-    acc.delivered++;
-    return acc;
-  }
-
-  const expISO = pickExpectedDate(o);
-  const days   = daysFromToday(expISO);
-
-  if (days === null) { acc.noDate++; }
-  else if (days < 0) { acc.late++; }
-  else if (days <= 7) { acc.dueSoon++; }
-  else { acc.scheduled++; }
+  const cat = trackingCategoryOf(o);
+  acc[cat] = (acc[cat] || 0) + 1;
   return acc;
 }, { late:0, dueSoon:0, scheduled:0, noDate:0, delivered:0 });
 
+const chipDefs = [
+  { key:'late',      label:'Late',      colorClass:'pill-err',  title:'Expected date is in the past (and not delivered)' },
+  { key:'dueSoon',   label:'Due soon',  colorClass:'pill-warn', title:'Expected within 7 days (and not delivered)' },
+  { key:'scheduled', label:'Scheduled', colorClass:'pill-info', title:'Expected later than 7 days' },
+  { key:'noDate',    label:'No date',   colorClass:'',          title:'No expected date set' },
+  { key:'delivered', label:'Delivered', colorClass:'pill-ok',   title:'Marked as delivered' }
+];
+
 const summary = el('div', { class:'summary-chips' },
-  el('span', { class:'pill pill-err',   title:'Expected date is in the past (and not fully delivered)' }, `Late: ${counters.late}`),
-  el('span', { class:'pill pill-warn',  title:'Expected within 7 days (and not fully delivered)' },     `Due soon: ${counters.dueSoon}`),
-  el('span', { class:'pill pill-info',  title:'Expected later than 7 days' },                            `Scheduled: ${counters.scheduled}`),
-  el('span', { class:'pill',            title:'No expected date set' },                                  `No date: ${counters.noDate}`),
-  el('span', { class:'pill pill-ok',    title:'All items delivered' },                                   `Delivered: ${counters.delivered}`)
+  ...chipDefs.map(c => el('span', {
+    class: 'toggle-chip ' + c.colorClass + (categoryFilter[c.key] ? ' active' : ''),
+    title: c.title,
+    onclick: () => {
+      categoryFilter[c.key] = !categoryFilter[c.key];
+      render();
+    }
+  }, `${c.label}: ${counters[c.key]}`))
 );
 container.appendChild(summary);
 
@@ -8075,9 +8073,6 @@ const table = el('table', {},
       const supplier = this.getMainSupplier(o);
 
       const items = Array.isArray(o.items) ? o.items : [];
-      const deliveredItems = items.filter(it => it.delivered).length;
-      const totalItems = items.length || 1;
-      const deliveredPercent = Math.round((deliveredItems / totalItems) * 100);
 
       // Compute order totals per currency from items (fallback to invoice amount)
       const totalsByCur = items.reduce((acc, it) => {
@@ -8114,7 +8109,7 @@ const table = el('table', {},
       const isHeaderDelivered = !!(statusFlags && statusFlags.delivered);
 
 // Build the action button cell
-const canMarkDelivered = !isHeaderDelivered && deliveredPercent < 100;
+const canMarkDelivered = !isHeaderDelivered;
 
 // Open button (jump to Orders tab)
 const openBtn = el('button', {
@@ -8288,7 +8283,7 @@ const actionCell = canMarkDelivered
       // Expected + Days (uses per-item earliest undelivered, else order-level)
       const expISO = pickExpectedDate(o);
       const days   = daysFromToday(expISO);
-      const [daysBadge/*node*/, _statusText] = badgeForDays(days, deliveredPercent);
+      const [daysBadge/*node*/, _statusText] = badgeForDays(days, isHeaderDelivered ? 100 : 0);
       const expDisplay = expISO || '—';
 
       return el('tr', {},
@@ -8298,7 +8293,7 @@ const actionCell = canMarkDelivered
         el('td', {}, supplier || ''),
         el('td', {},
           el('div', { class:'flex', style:{ alignItems:'center', gap:'6px' } },
-            el('span', { class:'pill pill-info' }, deliveredPercent + '%'),
+            el('span', { class: isHeaderDelivered ? 'pill pill-ok' : 'pill' }, isHeaderDelivered ? 'Delivered' : 'Not delivered'),
             vStatusNode
           )
         ),
