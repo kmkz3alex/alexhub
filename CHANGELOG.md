@@ -211,6 +211,39 @@ All notable changes to the Procurement Tool will be documented here.
   Delivered flag from stale per-item checkbox state, a real risk that no
   longer exists once the checkboxes are gone. Verified across multiple
   real test scenarios covering all four changes.
+- Changed: Materials tab overhaul, following a full walkthrough of what the
+  user actually uses this tab for versus what it was showing. (1) The
+  "Group materials" toggle and the old flat/grouped table duality have been
+  removed entirely - the table now always shows exactly one row per
+  material name, regardless of how many suppliers or orders it appeared
+  in, with Best Supplier/Price/Currency for at-a-glance cheapest-price
+  comparison. A new "View Orders" modal (replacing the old "Open order"
+  button) lists every order that material has ever appeared in across all
+  suppliers - date, supplier, price, currency - each with its own
+  "Open Order" button to jump straight to that specific order. (2) The
+  200-row hard cap (which was applied to raw quotes BEFORE grouping,
+  silently showing fewer than 100 distinct materials once duplicates
+  collapsed) is now a 100-default with a "Show More" button (+100 per
+  click), correctly counting grouped materials instead. (3) The supplier
+  filter dropdown has been replaced with a searchable autocomplete
+  (reusing the same proven floating-overlay, word-token-matching component
+  built for material name entry) - this fixes a real, confirmed bug where
+  selecting "All suppliers" after choosing a specific supplier silently
+  failed to reset the filter, caused by a <select> element's value being
+  set before its <option> children existed. (4) Confirmed the existing
+  material search bar already uses word-order-independent, multi-field
+  token matching (comparable to or better than the matching built
+  elsewhere in the app) - no changes needed there. (5) Clarified that
+  "Only winners" is not redundant with the Best Supplier column (it
+  changes "best" from "cheapest ever quoted" to "cheapest among suppliers
+  actually selected") and kept it. (6) Removed a redundant summary pill
+  row duplicating figures already shown in the KPI grid, and trimmed the
+  KPI grid and per-supplier stats box to remove further duplicated
+  figures, keeping only the per-supplier quote/win breakdown as genuinely
+  unique information. (7) Kept the RFQ Intelligence box (best historical
+  price, last winner, expected range for a searched material), confirmed
+  useful after trying it live. Verified across many real test scenarios
+  covering every piece of this redesign.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
