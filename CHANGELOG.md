@@ -162,6 +162,33 @@ All notable changes to the Procurement Tool will be documented here.
   full name is always visible, which matters in particular when the
   distinguishing detail (an item code, a spec, a size) sits at the very
   end of a long name.
+- Fixed and improved: Tracking tab delivered-status handling, found via a
+  real bug report (an order marked Delivered/Completed in the Orders tab
+  was still showing as "Late" in Tracking). Root cause: the Late/On-time
+  badge was computed from an old per-item delivered-percentage field the
+  user no longer uses, completely independent from the actual order-level
+  Delivered flag shown in the Orders tab - the two could silently diverge.
+  Removed the unused per-item percentage tracking entirely (filter logic,
+  summary counters, and the per-row "X%" pill, which now reads "Delivered"
+  / "Not delivered" instead) in favor of the order-level flag as the single
+  source of truth everywhere. Also: (1) the stage filter (Ongoing/On
+  hold/Completed/Canceled) now defaults to excluding On hold and Canceled
+  orders from summary counts, since a canceled or on-hold order showing as
+  "Late" was misleading - still toggleable back on for a quick look; (2)
+  setting an order's stage to Completed now automatically marks it
+  Delivered too, since the user's workflow never completes an order without
+  delivering it - deliberately one-directional, so changing the stage away
+  from Completed later does not silently un-mark delivered; (3) the
+  previously separate "Only Late"/"Due soon" toggle buttons and the
+  static, non-interactive summary chips have been unified into one row of
+  five clickable, multi-select chips (Late/Due soon/Scheduled/No date/
+  Delivered) - any combination can now be viewed together (e.g. Late +
+  Due soon at once), which was not previously possible, and Scheduled/No
+  date/Delivered can now be isolated at all for the first time. A new
+  shared trackingCategoryOf() helper guarantees the chip counts and the
+  actual filtering can never drift out of sync with each other going
+  forward. Verified across many real test scenarios covering every piece
+  of this change.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
