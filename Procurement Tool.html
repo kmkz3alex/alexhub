@@ -2464,10 +2464,16 @@ async function getDirHandleFromSegments(baseDir, segments = [], create = false){
   return cur;
 }
 
+// Single source of truth for "remove a named file from an already-resolved
+// directory handle" - mirrors writeBlobToDir's pattern (Phase 1 refactor).
+async function removeFileFromDir(dirHandle, filename){
+  await dirHandle.removeEntry(filename);
+}
+
 // Delete a file at (segments/filename)
 async function deleteFileAtPath(baseDir, segments, filename){
   const folder = await getDirHandleFromSegments(baseDir, segments, false);
-  await folder.removeEntry(filename);
+  await removeFileFromDir(folder, filename);
 }
 
 // ---- pdf-lib loader + bytes helper -----------------------------------------
@@ -11464,7 +11470,7 @@ try {
           if (handle.kind !== 'file') continue;
           if (!/\.xlsx$/i.test(name)) continue;
           if (name === fileName) continue;
-          try { await cmpDir.removeEntry(name); } catch(_) {}
+          try { await removeFileFromDir(cmpDir, name); } catch(_) {}
         }
       } catch(_) {}
 
