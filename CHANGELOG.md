@@ -266,6 +266,15 @@ All notable changes to the Procurement Tool will be documented here.
   caused by this refactor (nothing here specifically targeted that
   behavior), but noted as a possible side effect worth continued
   observation rather than a confirmed fix.
+- Refactored (Phase 2 of code restructuring): added clear, visible
+  [SECTION] opening and closing markers around the File & Local Storage
+  Helpers cluster (File System Access API handles, IndexedDB handle
+  storage, the two lazy library loaders). This cluster was previously
+  unlabeled, sitting in the middle of the broader UI Helpers section with
+  only an informal one-line divider comment - now clearly delimited,
+  matching the visible marker style already used for the file's other
+  major sections. Purely additive comments; no code was moved and no
+  behavior changed.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
