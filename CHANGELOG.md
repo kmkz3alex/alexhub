@@ -244,6 +244,28 @@ All notable changes to the Procurement Tool will be documented here.
   price, last winner, expected range for a searched material), confirmed
   useful after trying it live. Verified across many real test scenarios
   covering every piece of this redesign.
+- Refactored (Phase 1 of code restructuring, done deliberately with an
+  eventual online/multi-user version in mind - see project notes):
+  consolidated duplicated file-writing logic in the storage helper layer.
+  A structural audit found the same 4-line "get file handle, create
+  writable, write, close" sequence independently reimplemented in four
+  separate places (the comparison export's direct-write path, its
+  showSaveFilePicker path setup, and saveComparisonXlsxToOrderFolder()),
+  none of them using the saveBlobToPath() helper that already existed for
+  exactly this purpose. Also found and removed ensurePath(), a function
+  functionally identical to the more general getDirHandleFromSegments()
+  (confirmed via code comparison and a full-file search showing exactly
+  one caller). Introduced writeBlobToDir() as the new single source of
+  truth for the write sequence; saveBlobToPath() and
+  saveComparisonXlsxToOrderFolder() both now route through the shared
+  helpers instead of duplicating the logic. This is a pure refactor with
+  no intended behavior change, verified across multiple real export
+  scenarios (initial save, overwrite/re-export). Note: after this change,
+  the user observed the exported Excel file no longer opens in Windows
+  Protected View, a longstanding minor annoyance - not confirmed as
+  caused by this refactor (nothing here specifically targeted that
+  behavior), but noted as a possible side effect worth continued
+  observation rather than a confirmed fix.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
