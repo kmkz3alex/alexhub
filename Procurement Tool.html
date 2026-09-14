@@ -2419,22 +2419,23 @@ async function getComparisonTemplate(){
 }
 
 // ensure path like ['Orders','2025','RFQ-19742'] exists under base
-async function ensurePath(dirHandle, segments=[]){
-  let cur = dirHandle;
-  for (const name of segments){
-    cur = await cur.getDirectoryHandle(name, { create:true });
-  }
-  return cur;
-}
-
 // write a Blob to (segments/filename)
-async function saveBlobToPath(baseDir, segments, filename, blob){
-  const folder = await ensurePath(baseDir, segments);
-  const fileHandle = await folder.getFileHandle(filename, { create:true });
+// Single source of truth for "write a blob into an already-resolved
+// directory handle" - was previously reimplemented independently in four
+// separate places across the app (this function, the comparison export's
+// two save-path attempts, and saveComparisonXlsxToOrderFolder). Pure
+// refactor: identical behavior, one place to read/maintain instead of four.
+async function writeBlobToDir(dirHandle, filename, blob){
+  const fileHandle = await dirHandle.getFileHandle(filename, { create:true });
   const writable = await fileHandle.createWritable();
   await writable.write(blob);
   await writable.close();
   return fileHandle;
+}
+
+async function saveBlobToPath(baseDir, segments, filename, blob){
+  const folder = await getDirHandleFromSegments(baseDir, segments, true);
+  return await writeBlobToDir(folder, filename, blob);
 }
 
 // open a file from (segments/filename) and return an object URL
@@ -11456,10 +11457,7 @@ try {
       } catch(_) {}
 
       // Overwrite the single canonical file
-      const fh = await cmpDir.getFileHandle(fileName, { create: true });
-      const writable = await fh.createWritable();
-      await writable.write(out);
-      await writable.close();
+      await writeBlobToDir(cmpDir, fileName, out);
 
       // Remember for "Open last Excel"
       const key = order?.id || order?.rfq || order?.adhocCode || 'no-code';
@@ -11554,13 +11552,9 @@ async function saveComparisonXlsxToOrderFolder(order, blob, filename){
     if (!base) throw new Error('No base folder selected');
     // Build path segments for Comparison for this order (uses your existing convention)
     const segments = expectedSegmentsFor(order, 'Comparison');
-    const dir = await getDirHandleFromSegments(base, segments, true);
 
     // Write file
-    const fh = await dir.getFileHandle(filename, { create: true });
-    const w = await fh.createWritable();
-    await w.write(blob);
-    await w.close();
+    await saveBlobToPath(base, segments, filename, blob);
 
     // Register metadata (idempotent-ish)
     order.files = Array.isArray(order.files) ? order.files : [];
