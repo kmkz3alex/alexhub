@@ -2046,7 +2046,16 @@ function recomputeStatus(o){
   return o.status;
 }
 
-// ==== File storage (FSA + tiny IDB to remember the chosen base folder) ====
+// ==========================================================================
+// [SECTION] File & Local Storage Helpers
+// File System Access API (local folder/file handles) + IndexedDB handle
+// storage (base folder, comparison template). Sits inside the broader
+// [SECTION] UI Helpers span above - called out separately here since it's a
+// distinct concern (local file/folder storage), especially relevant if/when
+// this layer is swapped for cloud storage in a future online version. Also
+// includes two lazy library loaders (ExcelJS, PDF-lib), present here by
+// historical proximity rather than by purpose.
+// ==========================================================================
 const FS_SUPPORTED = 'showDirectoryPicker' in window;
 const IDB_DB = 'proc_tool_fs';
 const IDB_VER = 1;
@@ -2759,6 +2768,9 @@ async function mergeComparisonAndOffers(order, onDone){
     alert('Merge failed: ' + (e && e.message ? e.message : e));
   }
 }
+
+// ========================== [/SECTION] File & Local Storage Helpers ==========================
+// (back to general UI Helpers / string utilities below)
 
 // Case/diacritics-insensitive match
 function norm(x){
