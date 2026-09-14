@@ -275,6 +275,26 @@ All notable changes to the Procurement Tool will be documented here.
   matching the visible marker style already used for the file's other
   major sections. Purely additive comments; no code was moved and no
   behavior changed.
+- Refactored (Phase 3 of code restructuring, final phase): a complete sweep
+  of every File System Access API call in the file confirmed none exist
+  outside the two known clusters (the storage-helper layer, and the
+  comparison export path) - no hidden or forgotten direct-storage calls
+  anywhere else. Found one genuine leftover from Phase 1: the export's
+  stale-.xlsx cleanup loop (which keeps only one canonical file per order's
+  Comparisons folder) was still calling removeEntry directly instead of
+  going through a shared helper, missed in Phase 1 since that phase focused
+  specifically on the write sequence rather than this cleanup loop. Added
+  removeFileFromDir() as the single source of truth for this operation,
+  mirroring the writeBlobToDir() pattern from Phase 1; deleteFileAtPath()
+  and the cleanup loop both now route through it instead of duplicating the
+  logic. Pure refactor, no intended behavior change - verified by
+  deliberately triggering the cleanup scenario (a stray/renamed .xlsx file
+  in an order's Comparisons folder) and confirming it's still correctly
+  removed on export. This closes out the restructuring effort: storage
+  logic is now fully consolidated behind a clean, well-isolated helper
+  layer, genuinely easier to swap for cloud storage whenever the online/
+  multi-user version is eventually built - without any speculative
+  cloud-specific code written prematurely.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
