@@ -11442,12 +11442,37 @@ ws.getCell(netRow, priceCol1).numFmt = '#,##0.00 "RON"';
   reqValueCell.font = { name: 'Calibri', size: 20, bold: false };
 
   // Ranking (row 55): L1 = lowest total WITHOUT VAT, L2 = next, etc.
+  // Computed from the ACTUAL exported price cells (including any red
+  // substituted prices from step 9), not from the app's live cmp.quotes -
+  // supplierTotalsRON() would ignore substituted prices entirely, since
+  // step 9 only modifies the Excel cell, never the app's own data.
+  // TOTAL cells can't be used directly either - their cached value
+  // predates step 9's substitution and would still show the stale
+  // pre-substitution number; only the PRICE cell is guaranteed current,
+  // so quantity is multiplied in manually here. Transport/discount are
+  // untouched by substitution, so that portion is computed the same way
+  // supplierTotalsRON() already does it.
   const ranked = supIds
-    .map((sid, i) => ({
-      sid,
-      priceCol1: FIRST_PAIR_COL1 + 2 * i,
-      totalNoVat: comparisonManager.supplierTotalsRON(order, cmp, sid).totalNoVat
-    }))
+    .map((sid, i) => {
+      const priceCol1 = FIRST_PAIR_COL1 + 2 * i;
+      const curr = (scurBySid[sid] || 'RON').toUpperCase();
+      const rate = comparisonManager.rate(cmp, curr);
+
+      let materialsRON = 0;
+      for (let r = firstItemRow; r < firstItemRow + N; r++){
+        const priceVal = Number(ws.getCell(r, priceCol1).value) || 0;
+        const qtyVal = Number(ws.getCell(r, 3).value) || 0; // column C = Quantity
+        materialsRON += priceVal * qtyVal * rate;
+      }
+
+      const ps = cmp.perSupplier[sid] || {};
+      const transportRON = clampNonNeg(ps.transport) * comparisonManager.rate(cmp, ps.transportCurrency || 'RON');
+      const discountRON = clampNonNeg(ps.discount) * comparisonManager.rate(cmp, ps.discountCurrency || 'RON');
+
+      const totalNoVat = materialsRON + transportRON - discountRON;
+
+      return { sid, priceCol1, totalNoVat };
+    })
     .sort((a, b) => a.totalNoVat - b.totalNoVat);
 
   ranked.forEach((r, rank) => {
