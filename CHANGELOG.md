@@ -318,6 +318,31 @@ All notable changes to the Procurement Tool will be documented here.
   remaining materials keep their own correct prices/winners, plus a
   post-deletion Excel export confirming the exported data matches what's
   shown in the app.
+- Fixed: the comparison export's L1..LN supplier ranking (row 55) did not
+  account for the missing-price substitution feature added in an earlier
+  fix (a supplier with no quote for a material gets the lowest quoted
+  price from another supplier copied in, shown in red text). Root cause:
+  ranking was computed from the app's live cmp.quotes data via
+  supplierTotalsRON(), which has no visibility into the substitution step -
+  that step only writes directly into the Excel cell, never back into the
+  app's own data (by design, so substituted prices never influence live
+  in-app decision-making). The practical effect: a supplier missing a
+  quote for one material had that material's cost silently excluded from
+  their ranking total entirely, understating what they'd actually cost
+  based on the document as printed. Ranking now sums the actual exported
+  price cells (correctly including any substituted values) multiplied by
+  quantity, converted through exchange rates, with transport/discount
+  computed the same way as before (unaffected by substitution, which only
+  applies to materials). Deliberately confirmed with the user: the app's
+  own "Best total" badge should continue to reflect only real quotes, not
+  substituted placeholders - this fix only changes the EXPORTED document's
+  ranking to match what's actually printed there, and the two may now
+  legitimately disagree in cases involving substitution, which is
+  intentional. Verified across three scenarios: the exact reported case
+  (a missing quote correctly counted in ranking), a full-real-quotes case
+  confirming no change in behavior when nothing needed substituting, and a
+  cross-check confirming the export still matches the app's own badge in
+  the no-substitution case.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
