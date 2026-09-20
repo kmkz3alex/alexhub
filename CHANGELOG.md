@@ -343,6 +343,34 @@ All notable changes to the Procurement Tool will be documented here.
   confirming no change in behavior when nothing needed substituting, and a
   cross-check confirming the export still matches the app's own badge in
   the no-substitution case.
+- Added: "Copy Table" button in the read-only Items view (Orders tab), for
+  quickly preparing an RFQ materials list to send to suppliers by email.
+  Copies a Material/Unit/Qty table (no price/supplier columns) to the
+  clipboard. Rather than plain text, this writes a genuine rich HTML table
+  with visible cell borders alongside a tab-separated plain-text fallback,
+  using the browser's rich clipboard API (navigator.clipboard.write with
+  ClipboardItem) - so pasting into Outlook, Word, or Gmail produces an
+  actual bordered grid, matching the user's existing "copy a range from
+  Excel, paste into Outlook" workflow, rather than unformatted text. Paste
+  destinations that only accept plain text automatically get the
+  tab-separated fallback instead. Material names are HTML-escaped to
+  avoid broken output for any name containing &, <, or > characters.
+  Design decided collaboratively before building: considered and rejected
+  two simpler plain-text-only formats (a manually-aligned column table,
+  and a single-line-per-material format) once the user clarified their
+  actual habit was pasting a genuine formatted Excel range, not plain
+  text. Verified: the button and copy action itself, a real paste into
+  Outlook Classic showing a correctly bordered table, a real paste into
+  Gmail (not originally part of the plan, tried by the user and also
+  confirmed working), a plain-text-only destination correctly falling
+  back to readable tab-separated text, and correct display of a material
+  name containing a special character.
+- Noted but not yet acted on: while building this feature, found that the
+  same Items view's existing "Delivered: Yes/No" column and Delivered/
+  Pending totals still read the old per-item `it.delivered` field, rather
+  than the order-level statusFlags.delivered flag established as the
+  single source of truth earlier this session (Fix 12/13). Logged as a
+  known inconsistency to revisit, not fixed as part of this feature.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
