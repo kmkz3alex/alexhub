@@ -295,6 +295,29 @@ All notable changes to the Procurement Tool will be documented here.
   layer, genuinely easier to swap for cloud storage whenever the online/
   multi-user version is eventually built - without any speculative
   cloud-specific code written prematurely.
+- Fixed: deleting an item from an order was silently corrupting comparison
+  prices and winner selections for every material after the deleted one.
+  Root cause: cmp.quotes and cmp.winners are keyed by array INDEX (idx),
+  not by any stable per-item identifier - the "Remove" button only removed
+  the item from order.items via splice(), never touching quotes/winners,
+  so those stayed pinned to their old positions. After deleting a middle
+  item, the material that shifted into that slot would display the price
+  and winner that used to belong to the deleted item, cascading for every
+  item after it (reported by the user as "completely breaks my comparison
+  list"). Confirmed the app only ever appends new items at the end
+  (never inserts mid-list or reorders), so this was scoped as a targeted
+  fix to the deletion action specifically, rather than a deeper migration
+  to stable per-item IDs (logged separately as a future architectural
+  improvement, since a full migration would touch ~20+ call sites for a
+  bug class that - given current usage patterns - only deletion can
+  actually trigger today). The Remove button now shifts cmp.quotes and
+  cmp.winners down to follow their correct material before removing it
+  from the item list, and removes the now-duplicate trailing entry.
+  Verified with a 3-item test order across three real scenarios: deleting
+  from the start, middle, and end of the list, each confirming the
+  remaining materials keep their own correct prices/winners, plus a
+  post-deletion Excel export confirming the exported data matches what's
+  shown in the app.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
