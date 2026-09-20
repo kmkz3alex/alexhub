@@ -5970,6 +5970,42 @@ const cmp = comparisons[o.id] || null;    if (!cmp) {
   const delBtn = el('button', {
     class:'btn danger',
     onclick:()=>{
+      // Keep cmp.quotes/cmp.winners (both index-keyed, not tied to a
+      // stable per-item ID) in sync with the item list. Without this,
+      // deleting an item leaves quotes/winners pinned to their old array
+      // positions - every material after the deleted one silently
+      // inherits the price/winner data that used to belong to the item
+      // one slot before it. Real, confirmed data-corruption bug.
+      const cmp = (state && state.comparisons && typeof state.comparisons === 'object')
+        ? state.comparisons[o.id]
+        : null;
+
+      if (cmp) {
+        const n = o.items.length; // count BEFORE removal
+
+        if (cmp.quotes && typeof cmp.quotes === 'object') {
+          for (let i = idx; i < n - 1; i++) {
+            if (Object.prototype.hasOwnProperty.call(cmp.quotes, i + 1)) {
+              cmp.quotes[i] = cmp.quotes[i + 1];
+            } else {
+              delete cmp.quotes[i];
+            }
+          }
+          delete cmp.quotes[n - 1];
+        }
+
+        if (cmp.winners && typeof cmp.winners === 'object') {
+          for (let i = idx; i < n - 1; i++) {
+            if (Object.prototype.hasOwnProperty.call(cmp.winners, i + 1)) {
+              cmp.winners[i] = cmp.winners[i + 1];
+            } else {
+              delete cmp.winners[i];
+            }
+          }
+          delete cmp.winners[n - 1];
+        }
+      }
+
       o.items.splice(idx,1);
       saveSoon?.();
       this.edit(o.id);
