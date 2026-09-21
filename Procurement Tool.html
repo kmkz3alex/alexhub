@@ -4243,27 +4243,17 @@ const isPaid = (o)=> !!(o?.statusFlags?.paid || o?.invoice?.paid);
       el('th', {}, 'Unit price'),
       el('th', {}, 'Currency'),
       el('th', {}, 'Supplier'),
-      el('th', {}, 'Delivered'),
       el('th', {}, 'Line total')
     ));
 
 const rows = items.map(it =>
-  el('tr', { class: it.delivered ? 'row-delivered' : 'row-pending' },
+  el('tr', {},
     el('td', {}, it.name || ''),
     el('td', {}, String(it.qtyTotal ?? 0)),
     el('td', {}, it.unit || ''),
     el('td', {}, fmtMoney(it.unitPrice || 0)),
     el('td', {}, it.currency || 'RON'),
     el('td', {}, supplierName(it)),
-    // Delivered (with tooltip)
-    el('td', {},
-      it.delivered
-        ? el('span', {
-            class:'pill pill-ok',
-            title: it.deliveredAt ? new Date(it.deliveredAt).toLocaleString() : ''
-          }, 'Yes')
-        : el('span', { class:'pill pill-warn' }, 'No')
-    ),
     el('td', {}, `${fmtMoney(lineTotal(it))} ${it.currency || 'RON'}`)
   )
 );
@@ -5679,9 +5669,6 @@ const head = el('tr', {},
   el('th', {}, 'Curr'),
   el('th', {}, 'Supplier'),
   el('th', {}, 'Expected'),
-  el('th', {}, 'Delivered Qty'),
-  el('th', {}, 'Remaining'),
-  el('th', {}, 'Status'),
   el('th', {}, 'Actions')
 );
 
@@ -6021,47 +6008,6 @@ const cmp = comparisons[o.id] || null;    if (!cmp) {
     el('td', {}, currRO),    // read-only
     el('td', {}, suppRO),    // read-only
     el('td', {}, expInp),
-
-    el('td', {},
-      el('input', {
-        type:'number',
-        step:'0.01',
-        min:'0',
-        max:String(it.qtyTotal || 0),
-        value:String(it.deliveredQty || 0),
-        style:{ width:'90px' },
-        oninput:(e)=>{
-          const orderedQty = clampNonNeg(it.qtyTotal);
-          let deliveredQty = clampNonNeg(e.target.value);
-
-          if (deliveredQty > orderedQty) deliveredQty = orderedQty;
-
-          it.deliveredQty = deliveredQty;
-          it.remainingQty = Math.max(0, orderedQty - deliveredQty);
-          it.delivered = orderedQty > 0 && deliveredQty >= orderedQty;
-          it.deliveredAt = it.delivered ? (it.deliveredAt || new Date().toISOString()) : '';
-
-          if (typeof recomputeStatus === 'function') recomputeStatus(o);
-          if (typeof saveSoon === 'function') saveSoon(); else if (typeof save === 'function') save();
-        },
-        onblur:()=>{
-          this.edit(o.id);
-        }
-      })
-    ),
-
-    el('td', {},
-      fmt.qty ? fmt.qty(it.remainingQty || 0) : String(it.remainingQty || 0)
-    ),
-
-    el('td', {},
-      it.delivered
-        ? el('span', { class:'pill pill-ok' }, 'Delivered')
-        : (clampNonNeg(it.deliveredQty) > 0
-            ? el('span', { class:'pill pill-warn' }, 'Partial')
-            : el('span', { class:'pill' }, 'Pending'))
-    ),
-
     el('td', {}, delBtn)
   );
 });
@@ -7012,51 +6958,47 @@ OrderManager.prototype.viewItems = function(order){
       el('th', {}, 'Unit price'),
       el('th', {}, 'Currency'),
       el('th', {}, 'Supplier'),
-      el('th', {}, 'Delivered'),
       el('th', {}, 'Line total')
     ));
 
-const rows = items.map(it => {
-  const delivered = !!it.delivered;
-  return el('tr', { class: delivered ? 'row-delivered' : 'row-pending' },
-    el('td', {}, it.name || ''),
-    el('td', {}, String(it.qtyTotal ?? 0)),
-    el('td', {}, it.unit || ''),
-    el('td', {}, fmtMoney(it.unitPrice || 0)),
-    el('td', {}, it.currency || 'RON'),
-    el('td', {}, supplierName(it)),
-    // Delivered (with timestamp tooltip if present)
-    el('td', {},
-      delivered
-        ? el('span', {
-            class:'pill pill-ok',
-            title: it.deliveredAt ? new Date(it.deliveredAt).toLocaleString() : ''
-          }, 'Yes')
-        : el('span', { class:'pill pill-warn' }, 'No')
-    ),
-    el('td', {}, `${fmtMoney(lineTotal(it))} ${it.currency || 'RON'}`)
-  );
-});
+    const rows = items.map(it =>
+      el('tr', {},
+        el('td', {}, it.name || ''),
+        el('td', {}, String(it.qtyTotal ?? 0)),
+        el('td', {}, it.unit || ''),
+        el('td', {}, fmtMoney(it.unitPrice || 0)),
+        el('td', {}, it.currency || 'RON'),
+        el('td', {}, supplierName(it)),
+        el('td', {}, `${fmtMoney(lineTotal(it))} ${it.currency || 'RON'}`)
+      )
+    );
 
     const table = el('table', {}, thead, el('tbody', {}, ...rows));
 
+    // Single order-level total (per currency). Delivery status is tracked
+    // once for the whole order (statusFlags.delivered), not per item, so
+    // the old Delivered/Pending totals split no longer reflects anything
+    // real - it always showed the SAME value repeated per row before.
     const totals = items.reduce((acc, it)=>{
       const cur = it.currency || 'RON';
-      const val = lineTotal(it);
-      const bucket = it.delivered ? 'delivered' : 'pending';
-      acc[bucket] = acc[bucket] || {};
-      acc[bucket][cur] = (acc[bucket][cur] || 0) + val;
+      acc[cur] = (acc[cur] || 0) + lineTotal(it);
       return acc;
-    }, { delivered:{}, pending:{} });
+    }, {});
 
-    const sumBox = (label, obj, cls)=> el('div', { class:`totals-box ${cls}`, style:{marginRight:'16px'} },
-      el('strong', {}, label),
-      ...Object.entries(obj).map(([cur,sum]) => el('span', { style:{marginLeft:'8px'} }, `${fmtMoney(sum)} ${cur}`))
+    const isOrderDelivered = !!(order.statusFlags && order.statusFlags.delivered);
+
+    const statusLine = el('div', { style:{ marginBottom:'8px' } },
+      el('strong', {}, 'Order status: '),
+      el('span', { class: isOrderDelivered ? 'pill pill-ok' : 'pill pill-warn' },
+        isOrderDelivered ? 'Delivered' : 'Not delivered'
+      )
     );
 
     const footer = el('div', { class:'form-row', style:{marginTop:'10px', borderTop:'1px dashed #ccc', paddingTop:'8px'} },
-      sumBox('Delivered:', totals.delivered, 'ok'),
-      sumBox('Pending:', totals.pending, 'warn')
+      el('div', { class:'totals-box', style:{marginRight:'16px'} },
+        el('strong', {}, 'Total:'),
+        ...Object.entries(totals).map(([cur,sum]) => el('span', { style:{marginLeft:'8px'} }, `${fmtMoney(sum)} ${cur}`))
+      )
     );
 
     const title = `Items - ${order.rfq || '(no RFQ)'} - ${order.title || '(no title)'}`;
@@ -7122,6 +7064,7 @@ const rows = items.map(it => {
     let modal;
     const content = el('div', {},
       el('h3', {}, title),
+      statusLine,
       table,
       footer,
       el('div', { class:'form-row' },
