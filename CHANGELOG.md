@@ -387,12 +387,11 @@ All notable changes to the Procurement Tool will be documented here.
   today, not something that became dead code as a result of this fix).
   Verified across all three views plus a general save/reload regression
   check.
-- Noted but not yet acted on: while building this feature, found that the
-  same Items view's existing "Delivered: Yes/No" column and Delivered/
+- Noted while building this feature (RESOLVED - see the entry above):
+  the same Items view's existing "Delivered: Yes/No" column and Delivered/
   Pending totals still read the old per-item `it.delivered` field, rather
   than the order-level statusFlags.delivered flag established as the
-  single source of truth earlier this session (Fix 12/13). Logged as a
-  known inconsistency to revisit, not fixed as part of this feature.
+  single source of truth earlier this session (Fix 12/13).
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
