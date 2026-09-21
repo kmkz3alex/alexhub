@@ -365,6 +365,28 @@ All notable changes to the Procurement Tool will be documented here.
   confirmed working), a plain-text-only destination correctly falling
   back to readable tab-separated text, and correct display of a material
   name containing a special character.
+- Fixed: completed the per-item delivered-status cleanup across the two
+  remaining views found to still use it (following up on the inconsistency
+  noted while building the RFQ item table copy feature). (1) The read-only
+  Items view (Orders tab) now shows a single "Order status: Delivered/Not
+  delivered" line instead of a per-item Delivered column that always
+  showed the same value repeated on every row, and its footer now shows
+  one combined total instead of a meaningless Delivered/Pending split.
+  (2) The Order editor's own item-editing table: per explicit user
+  decision, removed the entire Delivered Qty/Remaining/Status apparatus
+  (not just the redundant boolean fields) - the underlying quantity-based
+  partial-delivery tracking was confirmed unused, since the user only
+  relies on the single order-level Delivered flag. (3) The Suppliers tab's
+  per-supplier order history card: removed the same stale per-item
+  Delivered column, which duplicated the card's already-correct
+  order-level "Status: ..." line shown above the table - no new status
+  indicator needed there, since a correct one already existed. Also
+  investigated and ruled out a suspected orphaned CSS cleanup (.row-
+  delivered/.row-pending never actually had style rules defined for them
+  in the stylesheet - applying those classes was already a no-op before
+  today, not something that became dead code as a result of this fix).
+  Verified across all three views plus a general save/reload regression
+  check.
 - Noted but not yet acted on: while building this feature, found that the
   same Items view's existing "Delivered: Yes/No" column and Delivered/
   Pending totals still read the old per-item `it.delivered` field, rather
