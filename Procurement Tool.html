@@ -3794,7 +3794,7 @@ function selectSupplierDropdown(item, idx){
 }
 
 // ---- Minimal modal helper + quick-add supplier
-function showModal(content){
+function showModal(content, onClose){
   // Ensure only one modal overlay at a time (avoid stacking multiple popups)
   try {
     const existing = document.querySelectorAll('.modal');
@@ -3819,6 +3819,11 @@ function showModal(content){
     if (!overlay || !overlay.parentNode) return;
     overlay.parentNode.removeChild(overlay);
     document.removeEventListener('keydown', onKey);
+    // Fires on every dismissal path (button, Escape, outside-click) - lets
+    // callers like confirmDialog() know the modal is gone even if the user
+    // never clicked an explicit button, so a promise-based caller never
+    // hangs waiting for a response that will never come via a button click.
+    if (typeof onClose === 'function') onClose();
   }
 
   function onKey(e){
@@ -3837,6 +3842,43 @@ function showModal(content){
   document.body.appendChild(overlay);
 
   return { close };
+}
+
+// Promise-based, styled replacement for native confirm(). Resolves true
+// only if the user explicitly clicks the confirm button; resolves false
+// for Cancel, Escape, or clicking outside - matching native confirm()'s
+// own Escape/dismiss = Cancel behavior. Preserves newlines (\n) in the
+// message, since several existing confirm() calls use them for multi-
+// paragraph warnings.
+function confirmDialog(message, opts = {}){
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+
+    const confirmLabel = opts.confirmLabel || 'Continue';
+    const cancelLabel = opts.cancelLabel || 'Cancel';
+    const danger = !!opts.danger;
+
+    let modal;
+    const onConfirmClick = () => { settle(true); modal.close(); };
+    const onCancelClick = () => { settle(false); modal.close(); };
+
+    const content = el('div', {},
+      el('div', { style:{ whiteSpace:'pre-wrap', marginBottom:'16px' } }, message),
+      el('div', { class:'form-row', style:{ justifyContent:'flex-end', gap:'8px' } },
+        el('button', { class:'btn secondary', onclick: onCancelClick }, cancelLabel),
+        el('button', { class: danger ? 'btn danger' : 'btn', onclick: onConfirmClick }, confirmLabel)
+      )
+    );
+
+    // onClose is a safety net for Escape/outside-click dismissal - if a
+    // button already settled the promise, this is a harmless no-op.
+    modal = showModal(content, () => settle(false));
+  });
 }
 
 // ===== Class: SupplierManager - Handles Suppliers tab: CRUD for suppliers and viewing related orders.
@@ -6529,7 +6571,7 @@ else render();
           }
         } }, 'Move'), ' ',
 el('button', { class:'btn danger', onclick: async ()=>{
-  if (!confirm('Delete this file from disk?')) return;
+  if (!(await confirmDialog('Delete this file from disk?', { confirmLabel: 'Delete', danger: true }))) return;
   try {
     const base = await getBaseFolder(); if (!base) return;
 
