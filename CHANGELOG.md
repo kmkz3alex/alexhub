@@ -392,6 +392,28 @@ All notable changes to the Procurement Tool will be documented here.
   Pending totals still read the old per-item `it.delivered` field, rather
   than the order-level statusFlags.delivered flag established as the
   single source of truth earlier this session (Fix 12/13).
+- Started (Phase 1 of the alert/confirm dialog styling project): replacing
+  native confirm() dialogs with a styled, promise-based equivalent, the
+  first step toward the long-deferred "give confirm/alert dialogs real
+  visual styling" item. An audit found most of the app's 65 alert() calls
+  are already effectively dead code (guarded by notify() - the app's own
+  existing styled toast system - which is always available, so the raw
+  alert() fallback rarely fires); the real remaining work is the 10
+  confirm() calls, which block execution synchronously in a way a custom
+  styled popup structurally cannot replicate - each one needs converting
+  to an async, promise-based equivalent instead. Extended showModal() with
+  an optional onClose callback (backward-compatible - existing single-
+  argument callers unaffected), firing on every dismissal path so a
+  promise-based caller is guaranteed to eventually resolve even if the
+  user dismisses via Escape or clicking outside rather than an explicit
+  button - without this, such a caller could hang indefinitely. Added
+  confirmDialog(message, opts), matching the app's theme, resolving true
+  only on explicit confirm and false otherwise (matching native confirm()
+  semantics for Escape/outside-click). Converted the first of 10 call
+  sites (file deletion) as a proof of concept; the remaining 9 to follow
+  incrementally. Verified: correct styled rendering, confirm/cancel both
+  working correctly, and - the trickiest case - Escape and outside-click
+  both correctly resolving as Cancel without leaving the app stuck.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
