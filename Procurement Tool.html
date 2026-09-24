@@ -11534,8 +11534,20 @@ ws.getCell(netRow, priceCol1).numFmt = '#,##0.00 "RON"';
   const GREEN = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF92D050' } };
   const winnerIds = new Set(Object.values(cmp.winners || {}).filter(Boolean));
 
-  if (winnerIds.size === 1) {
-    // Single overall winner - highlight their name cell in the header row.
+  // Only treat this as a true "one supplier won everything" case when EVERY
+  // material actually has an assigned winner, and they're all the same
+  // supplier. Previously this only checked how many DISTINCT suppliers
+  // appeared among whatever winners happened to be assigned - so if only
+  // some materials had a winner picked (others still undecided), and the
+  // ones that did all happened to point to one supplier, it wrongly
+  // highlighted that supplier's whole header as if they'd won the entire
+  // order, even though some materials were never actually decided.
+  const allItemsHaveWinner = order.items.length > 0 &&
+    order.items.every((_, idx) => !!(cmp.winners && cmp.winners[idx]));
+
+  if (allItemsHaveWinner && winnerIds.size === 1) {
+    // Genuinely one supplier won every material - highlight their name
+    // cell in the header row.
     const winnerSid = [...winnerIds][0];
     const wIdx = supIds.indexOf(winnerSid);
     if (wIdx >= 0) {
@@ -11544,8 +11556,10 @@ ws.getCell(netRow, priceCol1).numFmt = '#,##0.00 "RON"';
       cell.style = Object.assign({}, cell.style || {});
       cell.fill = GREEN;
     }
-  } else if (winnerIds.size > 1) {
-    // Split across suppliers - highlight just the winning price cell per item.
+  } else {
+    // Either genuinely split across suppliers, or some materials still
+    // have no winner assigned - highlight only the individual materials
+    // that actually have one, nothing implies the whole order is decided.
     order.items.forEach((_, idx) => {
       const winSid = cmp.winners ? cmp.winners[idx] : null;
       if (!winSid) return;
