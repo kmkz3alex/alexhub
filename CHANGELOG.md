@@ -414,6 +414,30 @@ All notable changes to the Procurement Tool will be documented here.
   incrementally. Verified: correct styled rendering, confirm/cancel both
   working correctly, and - the trickiest case - Escape and outside-click
   both correctly resolving as Cancel without leaving the app stuck.
+- Continued (Phase 1 of the alert/confirm dialog styling project): 5 more
+  confirm() calls converted to the styled confirmDialog() (6 of 10 total).
+  Converted: the second file-delete confirmation (drag-drop Files pane,
+  distinct from the earlier proof-of-concept site), the import/restore
+  confirmation, the merge-comparison-only confirmation, the Import
+  Historical Quotes confirmation, and the Export Excel incomplete-lines
+  warning. The last of these surfaced a real, previously-latent bug: the
+  Export button's handler read e.currentTarget (to toggle its disabled
+  state and label during export) AFTER the confirmation - but
+  e.currentTarget is only valid while the browser is still synchronously
+  dispatching the original click event, and reading it afterward returns
+  null. Native confirm() never actually yielded control back to the
+  browser (fully synchronous, blocking), so this was never exposed before;
+  confirmDialog() genuinely does yield at its await point, which is exactly
+  where the button reference needs to already be captured. Fixed by moving
+  the capture to the very start of the handler, before any possible await.
+  Also traced and ruled out an unrelated, pre-existing issue found while
+  testing this fix: an InvalidStateError export failure that looked
+  activation-related at first, methodically isolated (via a controlled
+  test with no confirmation dialog involved at all) to a completely
+  unrelated, ordinary cause - the target Excel file being open in Excel
+  at the time, unrelated to today's changes and not a code bug at all.
+  Each of the 5 conversions individually tested; the button-reference fix
+  re-verified with real reproduction of the original failure afterward.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
