@@ -3382,7 +3382,7 @@ function openFilePickerAndImport(){
     try{
       const text = await f.text();
       const data = JSON.parse(text);
-      if(!confirm('Importing will replace the current data. A backup will be saved automatically. Continue?')) return;
+      if (!(await confirmDialog('Importing will replace the current data. A backup will be saved automatically. Continue?', { danger: true }))) return;
       importJSONFromObject(data);
 
       // Use unified notification system when available
@@ -6355,7 +6355,7 @@ const cmp = comparisons[o.id] || null;    if (!cmp) {
           }
 
           if (!offersNow.length) {
-            const ok = confirm('No Offer PDFs found. Merge Comparison only?');
+            const ok = await confirmDialog('No Offer PDFs found. Merge Comparison only?', { confirmLabel: 'Merge' });
             if (!ok) return;
           }
 
@@ -6933,7 +6933,7 @@ function recomputeFlagsFromFiles(order){
             } }, 'Move'), ' ',
 
             el('button', { class:'btn danger', onclick: async ()=>{
-              if (!confirm('Delete this file from disk?')) return;
+              if (!(await confirmDialog('Delete this file from disk?', { confirmLabel: 'Delete', danger: true }))) return;
               try{
                 if (typeof getBaseFolder === 'function' && typeof deleteFileAtPath === 'function'){
                   const base = await getBaseFolder(); if (!base) return;
@@ -9566,7 +9566,7 @@ const usdInp = el('input', {
       class:'btn',
       title:'Fill empty comparison prices from latest historical quotes using exact material-name matches and copy related Offer PDFs.',
       onclick: async ()=>{
-        if (!confirm('Import latest historical quotes for exact matching materials?\n\nExisting manual prices will NOT be overwritten.\nRelated historical Offer PDFs will be copied into this order.')) return;
+        if (!(await confirmDialog('Import latest historical quotes for exact matching materials?\n\nExisting manual prices will NOT be overwritten.\nRelated historical Offer PDFs will be copied into this order.', { confirmLabel: 'Import' }))) return;
         await this.importHistoricalQuotes(order, cmp);
       }
     }, 'Import Historical Quotes');
@@ -9968,6 +9968,13 @@ const actions = (() => {
     el('button', {
       class:'btn',
       onclick: async (e)=>{
+        // Capture the button reference BEFORE any possible await point -
+        // e.currentTarget is cleared by the browser once the synchronous
+        // event-handling call stack finishes, which now happens as soon as
+        // we hit "await confirmDialog(...)" below (unlike the old synchronous
+        // confirm(), which never yielded control back to the browser at all).
+        const btn = e.currentTarget;
+
         // Lightweight validation: warn if any row has a winner without a price,
         // or if there are items with no winner at all.
         const items = Array.isArray(order.items) ? order.items : [];
@@ -9989,10 +9996,9 @@ const actions = (() => {
           if (noWinner.length) parts.push(`no winner: ${noWinner.slice(0,10).join(', ')}${noWinner.length>10?'…':''}`);
           if (winnerMissingPrice.length) parts.push(`winner price missing: ${winnerMissingPrice.slice(0,10).join(', ')}${winnerMissingPrice.length>10?'…':''}`);
           const msg = `Some lines are incomplete (${parts.join(' | ')}). Continue with export?`;
-          if (!confirm(msg)) return;
+          if (!(await confirmDialog(msg))) return;
         }
 
-        const btn = e.currentTarget;
         btn.disabled = true; const old = btn.textContent; btn.textContent = 'Exporting';
         try {
           await exportComparisonXLSX_ExcelJS(order, cmp);
