@@ -438,6 +438,25 @@ All notable changes to the Procurement Tool will be documented here.
   at the time, unrelated to today's changes and not a code bug at all.
   Each of the 5 conversions individually tested; the button-reference fix
   re-verified with real reproduction of the original failure afterward.
+- Fixed: the comparison export's winner highlighting (green fill) could
+  incorrectly highlight a supplier's entire header as having won the whole
+  order when only SOME materials actually had an assigned winner. Found
+  by the user during real use, immediately after an export where only one
+  of two materials had a winner selected. Root cause: the logic inferred
+  "single overall winner" purely from counting distinct suppliers among
+  whatever winners happened to already be assigned (winnerIds.size === 1),
+  with no check for whether every material actually had a winner at all -
+  so a partially-decided comparison, where the few assigned winners
+  happened to share one supplier, was indistinguishable from that
+  supplier genuinely winning every material. Now requires every material
+  to have an assigned winner AND all of them pointing to the same
+  supplier before the header gets highlighted; any other case (genuinely
+  split across suppliers, or any material still undecided) highlights
+  only the individual materials that actually have a winner, correctly
+  implying nothing about materials that haven't been decided yet.
+  Verified across all four real scenarios: the exact reported bug, a
+  genuine single-supplier-wins-everything order, a genuinely split
+  multi-supplier order, and an order with no winners assigned at all.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
