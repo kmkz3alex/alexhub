@@ -507,6 +507,34 @@ All notable changes to the Procurement Tool will be documented here.
   already found to be effectively dead code, guarded by notify() which is
   always available - only a smaller subset, mostly required-field
   validation messages, still needs this treatment).
+- Fixed and then removed: "Undo last Save," found while auditing remaining
+  alert() calls for the next phase of the dialog styling project. A real,
+  pre-existing bug was found first - a forEach call had been accidentally
+  split across a line break ("Object.keys(state).for" / "Each(k => delete
+  state[k]);"), making the button throw a ReferenceError and fail
+  unconditionally every single time it was clicked, regardless of whether
+  a valid snapshot existed. The syntax was fixed and confirmed working
+  (undo correctly reverted a test change). However, investigating the
+  feature's actual scope while already in this code revealed it only ever
+  covered two of the app's many mutating actions - supplier saves and
+  order saves. Every other action (comparisons, invoices, tracking
+  changes, file attach/move/rename/delete, any kind of deletion) never
+  took a snapshot at all, meaning the button would silently do nothing
+  ("Nothing to undo") for the vast majority of real mistakes a "one-step
+  undo" might be expected to protect against. A second, separate bug was
+  also found in the order-save path specifically: its snapshot was taken
+  AFTER the order was already applied to state, rather than before - so
+  even that one working case would likely restore a snapshot that already
+  included the mistake, making it a probable no-op. Given the syntax fix
+  alone would have left a feature covering only a narrow, easily-
+  misunderstood slice of the app's actions - risking false confidence
+  more than real protection - the feature was removed entirely rather
+  than further repaired: the menu item, both snapshot-write call sites,
+  and the resulting orphaned getUndoSnapshot()/setUndoSnapshot()/UNDO_KEY
+  were all cleanly deleted, with zero remaining references confirmed via
+  full-file search. Verified: the utilities menu renders correctly with
+  no trailing divider or dangling item, and both supplier and order saves
+  continue to work normally.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
