@@ -3634,27 +3634,6 @@ state._schemaVersion = v;
 if (changed) save();
 }
 
-// Single undo snapshot key derived from LS_KEY
-const UNDO_KEY = LS_KEY + ':undo';
-
-// Create an undo snapshot of the current state (used before mutating saves)
-function setUndoSnapshot(){
-  try {
-    sessionStorage.setItem(UNDO_KEY, serializeStateForStorage());
-  } catch (_) {
-    // best-effort; ignore quota or storage errors
-  }
-}
-
-// Read the last undo snapshot (not used unless you add an "Undo" button)
-function getUndoSnapshot(){
-  try {
-    return sessionStorage.getItem(UNDO_KEY);
-  } catch (_) {
-    return null;
-  }
-}
-
 // --- Storage serialization helper ---
 // Used by save(), migrate(), and undo snapshots
 function serializeStateForStorage() {
@@ -4353,7 +4332,6 @@ el('div', { class:'form-row' },
       el('div', { class:'supplier-editor-actions' },
         el('button', { class:'btn', onclick:()=>{
           if (!trimStr(s.company)) return alert('Company name is required');
-          if (typeof setUndoSnapshot === 'function') setUndoSnapshot();
           const i = this.state.suppliers.findIndex(x => x.id === s.id);
           if (i === -1) this.state.suppliers.push(s); else this.state.suppliers[i] = s;
           save(); render();
@@ -6540,11 +6518,6 @@ const cmp = comparisons[o.id] || null;    if (!cmp) {
           state.orders = Array.isArray(state.orders) ? state.orders : [];
           const idx = state.orders.findIndex(x => x.id === o.id);
           if (idx === -1) state.orders.push(o); else state.orders[idx] = o;
-
-          // Optional undo snapshot
-          if (typeof setUndoSnapshot === 'function') {
-            try { setUndoSnapshot(); } catch(_) {}
-          }
 
           // Once the order is persisted, clear the in-memory draft
           if (state && Object.prototype.hasOwnProperty.call(state, '_draftOrder')) {
@@ -11945,24 +11918,7 @@ el('button', {
 
     el('button', { onclick: () => exportJSON() }, 'Export JSON'),
     el('button', { onclick: () => openFilePickerAndImport() }, 'Import JSON'),
-    el('button', { onclick: () => restoreBackup() }, 'Restore Backup'),
-    el('div', { class:'divider' }),
-    el('button', {
-      onclick: () => {
-        const snap = getUndoSnapshot();
-        if (!snap) { alert('Nothing to undo'); return; }
-        try {
-          const restored = JSON.parse(snap);
-          Object.keys(state).for
-Each(k => delete state[k]);
-          Object.assign(state, restored);
-          save();
-          render();
-        } catch {
-          alert('Undo failed');
-        }
-      }
-    }, 'Undo last Save')
+    el('button', { onclick: () => restoreBackup() }, 'Restore Backup')
   );
 
   const rightGear = el('div', { class:'util-gear-wrap' }, gearBtn, utilMenu);
