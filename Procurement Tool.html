@@ -2656,7 +2656,7 @@ async function mergeComparisonAndOffers(order, onDone){
     // 0) Ensure library and base folder
     await ensurePDFLibLoaded();
     const base = await getBaseFolder();
-    if (!base) { alert('Please click "Set Storage Folder" first.'); return; }
+    if (!base) { notify('warn', 'Please click "Set Storage Folder" first.'); return; }
 
     // 1) Auto-relocate metadata to the current RFQ/Ad-hoc folder layout
     //    (same as pressing "Relocate to current RFQ/Ad-hoc")
@@ -2665,7 +2665,7 @@ async function mergeComparisonAndOffers(order, onDone){
     // 2) Gather refs
     const refs = Array.isArray(order.files) ? order.files : [];
     const compRef = refs.find(r => r.kind === 'Comparison' && /\.pdf$/i.test(r.filename));
-    if (!compRef) { alert('No Comparison PDF found in this order.'); return; }
+    if (!compRef) { notify('warn', 'No Comparison PDF found in this order.'); return; }
 
     const offerRefs = refs.filter(r => r.kind === 'Offer' && /\.pdf$/i.test(r.filename));
 
@@ -2681,7 +2681,7 @@ async function mergeComparisonAndOffers(order, onDone){
     // Check Comparison exists
     if (!(await refExists(compRef))){
       const p = ((compRef.segments || []).join('/') + '/' + (compRef.filename || '')).replace(/\/+/g,'/');
-      alert('Comparison PDF is listed but not found on disk:\n' + p + '\n\nIf you recently changed RFQ/Ad-hoc, try "Relocate to current RFQ/Ad-hoc". Otherwise reattach the Comparison PDF in Orders -> Files -> Kind=Comparison.');
+      await alertDialog('Comparison PDF is listed but not found on disk:\n' + p + '\n\nIf you recently changed RFQ/Ad-hoc, try "Relocate to current RFQ/Ad-hoc". Otherwise reattach the Comparison PDF in Orders -> Files -> Kind=Comparison.', { danger: true });
       return;
     }
 
@@ -2844,7 +2844,7 @@ async function mergeComparisonAndOffers(order, onDone){
     }
   } catch(e){
     console.error(e);
-    alert('Merge failed: ' + (e && e.message ? e.message : e));
+    notify('error', 'Merge failed: ' + (e && e.message ? e.message : e));
   }
 }
 
@@ -2910,7 +2910,7 @@ const targetSegments = [...orderPathSegments(order), kindFolder];
     });
 
     if (!pdfs.length) {
-      alert('Comparison accepts PDF files only.');
+      notify('warn', 'Comparison accepts PDF files only.');
       return;
     }
 
@@ -3145,7 +3145,7 @@ async function auditOrderFiles(order){
           save();
           // Re-open audit to refresh
           auditOrderFiles(order);
-        } catch(e){ alert('Relocate failed: ' + (e?.message || e)); }
+        } catch(e){ notify('error', 'Relocate failed: ' + (e?.message || e)); }
       }
     }, 'Relocate'))
   )) : [
@@ -3179,7 +3179,7 @@ async function auditOrderFiles(order){
           modal.close();
           if (typeof notify === 'function') notify('success', 'All misplaced files relocated.');
         } catch(e){
-          alert('Bulk relocate failed: ' + (e?.message || e));
+          notify('error', 'Bulk relocate failed: ' + (e?.message || e));
         }
       }
     }, 'Relocate all misplaced'),
@@ -3360,7 +3360,7 @@ function backupState(){
 // Restore from the last automatic backup (if available).
 function restoreBackup(){
   const raw = localStorage.getItem(getBackupKey());
-  if(!raw) return alert('No backup found.');
+  if (!raw) { notify('warn', 'No backup found.'); return; }
   try{
     const data = JSON.parse(raw);
     // Replace current state in-place
@@ -3368,9 +3368,9 @@ function restoreBackup(){
     Object.assign(state, data);
     if (typeof migrate === 'function') migrate(state._schemaVersion);
     save(); render();
-    alert('Backup restored.');
+    notify('success', 'Backup restored.');
   } catch(e){
-    alert('Backup is corrupted or invalid JSON.');
+    notify('error', 'Backup is corrupted or invalid JSON.');
   }
 }
 
@@ -6828,7 +6828,7 @@ OrderManager.prototype.renderFilesSection = function(order){
               /\.pdf$/i.test(f.name)
             )
           );
-          if (!pdfs.length) { alert('Comparison accepts PDF files only.'); return; }
+          if (!pdfs.length) { notify('warn', 'Comparison accepts PDF files only.'); return; }
 
           if (typeof saveFilesToOrder === 'function') {
             await saveFilesToOrder(order, 'Comparison', pdfs);
@@ -6910,7 +6910,7 @@ function recomputeFlagsFromFiles(order){
             const pdfs = filesAll.filter(f =>
               f && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name))
             );
-            if (!pdfs.length) { alert('Comparison accepts PDF files only.'); return; }
+            if (!pdfs.length) { notify('warn', 'Comparison accepts PDF files only.'); return; }
             if (typeof saveFilesToOrder === 'function') {
               await saveFilesToOrder(order, 'Comparison', pdfs);
             }
