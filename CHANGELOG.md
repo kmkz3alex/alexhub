@@ -457,6 +457,37 @@ All notable changes to the Procurement Tool will be documented here.
   Verified across all four real scenarios: the exact reported bug, a
   genuine single-supplier-wins-everything order, a genuinely split
   multi-supplier order, and an order with no winners assigned at all.
+- Added: deleting an order now also deletes its entire folder from disk
+  (Comparisons, Offers, Merged files, everything), found and requested by
+  the user immediately after converting the order-deletion confirmation to
+  the new styled dialog. Previously OrderManager.prototype.delete only
+  ever removed the order from the app's own data - the real folder on
+  disk was left behind permanently, meaning deleted orders would silently
+  accumulate as clutter over time. The confirmation dialog now explicitly
+  states that files will be permanently deleted alongside the order, so
+  this isn't a surprise. Deliberately scoped to a single confirmation (no
+  separate "also delete files?" checkbox), per the user's explicit
+  preference.
+  Building this surfaced a real complication, caught through actual
+  testing rather than assumed: the straightforward approach (one atomic
+  recursive folder-delete call) silently aborts partway through if it
+  encounters even one locked file (e.g. the comparison Excel open
+  elsewhere) - exactly the kind of file-lock issue this project has run
+  into more than once already. Reworked deleteOrderFolder() to walk and
+  delete the folder's contents individually instead, so one locked file
+  is skipped and reported rather than blocking cleanup of everything
+  else. Also added alertDialog() - a styled, persistent, single-button
+  informational popup (unlike notify()'s toast, which fades on its own
+  and could be missed for something as important as "these files
+  couldn't be deleted") - used to clearly report any skipped files,
+  staying on screen until explicitly dismissed.
+  Verified across five real scenarios: actual file deletion on disk for
+  an order with real attachments, a draft order with no folder at all
+  (correctly silent), Cancel leaving everything untouched, a
+  deliberately-locked file being correctly skipped while everything else
+  still gets removed with the persistent warning correctly naming it, and
+  a full regression check confirming the normal all-files-closed case
+  still deletes everything cleanly with no popup at all.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
