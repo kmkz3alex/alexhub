@@ -2470,6 +2470,79 @@ async function removeFileFromDir(dirHandle, filename){
   await dirHandle.removeEntry(filename);
 }
 
+// Deletes an order's ENTIRE folder tree (Comparisons, Offers, and any other
+// attachments), used when the order itself is deleted from the app. Returns
+// silently if no base folder is selected, or if the order never had a
+// folder created in the first place (a draft order with no files ever
+// attached) - both are normal, expected cases, not failures.
+//
+// Deliberately walks and deletes entries one at a time, rather than a
+// single recursive removeEntry() call, so that ONE locked file (e.g. the
+// comparison Excel currently open elsewhere) doesn't abort cleanup of
+// everything else in the folder - it's skipped, logged, and reported to
+// the user afterward, while every other file/subfolder still gets removed.
+async function deleteOrderFolder(order){
+  const base = await getBaseFolder();
+  if (!base) return;
+
+  const [ordersSeg, yearSeg, orderSeg] = orderPathSegments(order);
+  const yearDir = await getDirHandleFromSegments(base, [ordersSeg, yearSeg], false);
+
+  let orderDir;
+  try {
+    orderDir = await yearDir.getDirectoryHandle(orderSeg, { create: false });
+  } catch (e) {
+    if (typeof isNotFoundError === 'function' && isNotFoundError(e)) return;
+    throw e;
+  }
+
+  const skipped = [];
+
+  async function clearDir(dirHandle, pathLabel){
+    const entries = [];
+    for await (const [name, handle] of dirHandle.entries()){
+      entries.push([name, handle]);
+    }
+    for (const [name, handle] of entries){
+      const childLabel = pathLabel + '/' + name;
+      if (handle.kind === 'directory'){
+        await clearDir(handle, childLabel);
+        try {
+          await dirHandle.removeEntry(name);
+        } catch (e) {
+          skipped.push(childLabel);
+        }
+      } else {
+        try {
+          await dirHandle.removeEntry(name);
+        } catch (e) {
+          skipped.push(childLabel);
+        }
+      }
+    }
+  }
+
+  await clearDir(orderDir, orderSeg);
+
+  // Try to remove the now-hopefully-empty order folder itself. If files
+  // were skipped above, this will naturally fail too (folder not empty) -
+  // that's fine, it's left in place holding whatever couldn't be removed.
+  try {
+    await yearDir.removeEntry(orderSeg);
+  } catch (e) {
+    // Leftover locked files - already reported via "skipped" below.
+  }
+
+  if (skipped.length) {
+    const list = skipped.slice(0, 10).map(s => `  - ${s}`).join('\n');
+    const more = skipped.length > 10 ? `\n  …and ${skipped.length - 10} more` : '';
+    await alertDialog(
+      `Order deleted, but ${skipped.length} file(s) could not be removed from disk (likely still open elsewhere):\n\n${list}${more}\n\nClose them and delete the leftover file(s)/folder manually if needed.`,
+      { danger: true }
+    );
+  }
+}
+
 // Delete a file at (segments/filename)
 async function deleteFileAtPath(baseDir, segments, filename){
   const folder = await getDirHandleFromSegments(baseDir, segments, false);
@@ -3881,6 +3954,36 @@ function confirmDialog(message, opts = {}){
   });
 }
 
+// Styled, promise-based replacement for informational alert() - a single
+// "OK" button, stays on screen until explicitly dismissed (unlike notify()'s
+// toast, which fades on its own and can be missed for messages that
+// genuinely need to be seen, e.g. "these files could not be deleted").
+function alertDialog(message, opts = {}){
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+
+    const okLabel = opts.okLabel || 'OK';
+
+    let modal;
+    const content = el('div', {},
+      el('div', { style:{ whiteSpace:'pre-wrap', marginBottom:'16px' } }, message),
+      el('div', { class:'form-row', style:{ justifyContent:'flex-end' } },
+        el('button', {
+          class: opts.danger ? 'btn danger' : 'btn',
+          onclick: () => { settle(); modal.close(); }
+        }, okLabel)
+      )
+    );
+
+    modal = showModal(content, settle);
+  });
+}
+
 // ===== Class: SupplierManager - Handles Suppliers tab: CRUD for suppliers and viewing related orders.
 
 /* =====================================================================
@@ -4472,8 +4575,8 @@ viewFiles(supplier){
   modal = showModal(content);
 }
 
-delete(id){
-  if(!confirm('Delete supplier?')) return;
+async delete(id){
+  if (!(await confirmDialog('Delete supplier?', { confirmLabel: 'Delete', danger: true }))) return;
   const i = this.state.suppliers.findIndex(x=>x.id===id);
   if(i>-1) this.state.suppliers.splice(i,1);
   save(); render();
@@ -6476,7 +6579,7 @@ const cmp = comparisons[o.id] || null;    if (!cmp) {
  } // end class OrderManager
  // FIX: close class OrderManager (was left open by C2 patch)
 
-OrderManager.prototype.delete = function(key){
+OrderManager.prototype.delete = async function(key){
   const K = (key == null ? '' : String(key)).trim();
   if (!K) {
     alert('Cannot delete: missing identifier on this order.');
@@ -6493,7 +6596,10 @@ OrderManager.prototype.delete = function(key){
   }
 
   const label = order.rfq || order.adhocCode || order.orderNo || order.title || order.id || '(order)';
-  if (!confirm(`Delete order "${label}"?`)) return;
+  if (!(await confirmDialog(
+    `Delete order "${label}"?\n\nThis will permanently delete the order AND all its files on disk (Comparisons, Offers, and any other attachments). This cannot be undone.`,
+    { confirmLabel: 'Delete', danger: true }
+  ))) return;
 
   this.state.orders = Array.isArray(this.state.orders) ? this.state.orders : [];
   const idx = this.state.orders.findIndex(o =>
@@ -6523,6 +6629,23 @@ OrderManager.prototype.delete = function(key){
 
   save();
   render();
+
+  // Delete the order's whole folder tree from disk (best-effort - the
+  // order is already removed from the app regardless of whether this
+  // succeeds, matching the same best-effort pattern used elsewhere for
+  // file cleanup during deletion).
+  try {
+    if (typeof deleteOrderFolder === 'function') {
+      await deleteOrderFolder(order);
+    }
+  } catch (e) {
+    if (!(typeof isNotFoundError === 'function' && isNotFoundError(e))) {
+      console.warn('Could not delete order folder from disk:', e);
+      if (typeof notify === 'function') {
+        notify('warn', `Order removed from the app, but its files could not be fully deleted from disk: ${e?.message || e}`);
+      }
+    }
+  }
 };
 
 // --- NEW: Files modal per order ---
@@ -9332,7 +9455,7 @@ const removeSlot = async (slotIdx)=>{
       : `⚠️ This will permanently delete ${offerRefs.length} offer file(s) from this order's folder.`);
   }
 
-  if (parts.length && !confirm(parts.join('\n\n') + '\n\nContinue?')) {
+  if (parts.length && !(await confirmDialog(parts.join('\n\n') + '\n\nContinue?', { danger: true }))) {
     return;
   }
 
