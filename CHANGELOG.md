@@ -535,6 +535,27 @@ All notable changes to the Procurement Tool will be documented here.
   full-file search. Verified: the utilities menu renders correctly with
   no trailing divider or dangling item, and both supplier and order saves
   continue to work normally.
+- Started (Phase 2 of the alert/confirm dialog styling project): routing
+  the app's genuinely-unconditional alert() calls through notify() (the
+  app's existing styled toast system) or alertDialog() (added earlier this
+  session, for messages dense/important enough to need a persistent popup
+  rather than a fading toast). A fresh audit found 48 unconditional
+  alert() calls remaining (separate from 17 already guarded by
+  notify()-with-alert()-fallback, which rarely fire in practice). Given
+  each swap here is a simple, low-risk mechanical change - unlike the
+  confirm() conversions, no async/control-flow restructuring needed in
+  most cases - converting in batches of ~10 rather than one at a time.
+  First batch (12 total, grouped by function): mergeComparisonAndOffers
+  (4 messages, including the missing-Comparison-PDF instructional message
+  upgraded to alertDialog() given its length and actionable detail),
+  saveFilesToOrder, auditOrderFiles (2), restoreBackup (3 - one
+  restructured, since notify() doesn't return a value the way alert() did
+  for an early-exit pattern), and all three occurrences of "Comparison
+  accepts PDF files only" (one in saveFilesToOrder, two separate paths in
+  OrderManager.prototype.viewFiles - a genuine duplicate the original
+  audit initially missed, caught and properly disambiguated via distinct
+  surrounding context before converting each individually). Verified
+  across all 12 conversions.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
