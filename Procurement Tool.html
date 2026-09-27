@@ -7401,8 +7401,8 @@ const list = (this.state.orders || []).filter(o=>{
               inv.number
                 ? el('button', {
                     class:'btn danger',
-                    onclick:()=>{
-                      if(!confirm('Remove invoice from this order?')) return;
+                    onclick: async ()=>{
+                      if (!(await confirmDialog('Remove invoice from this order?', { confirmLabel: 'Remove', danger: true }))) return;
 
                       // Remove invoice object
                       delete o.invoice;
