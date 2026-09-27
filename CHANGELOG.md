@@ -488,6 +488,25 @@ All notable changes to the Procurement Tool will be documented here.
   still gets removed with the persistent warning correctly naming it, and
   a full regression check confirming the normal all-files-closed case
   still deletes everything cleanly with no popup at all.
+- Completed (Phase 1 of the alert/confirm dialog styling project, final
+  conversion): the last of 10 native confirm() calls - invoice removal -
+  converted to the styled, promise-based confirmDialog(). All 10 of the
+  app's confirm() dialogs are now replaced with the app's own themed
+  equivalent, each correctly handling explicit confirm/cancel, Escape, and
+  outside-click dismissal uniformly (via showModal()'s onClose callback,
+  added specifically to support this). This work, beyond its direct
+  visual goal, also surfaced and fixed two real, previously-latent bugs
+  that native confirm()'s fully-synchronous, blocking behavior had been
+  quietly masking: (1) a handler reading e.currentTarget after the
+  confirmation, which only breaks once the confirmation genuinely yields
+  control back to the browser (something confirm() never did), and (2) a
+  complete absence of file cleanup when deleting an order, which surfaced
+  once its confirmation dialog was being touched anyway and got a proper
+  look. Remaining for a future phase: routing the genuinely-unconditional
+  alert() calls through notify() (most of the app's 65 alert() calls were
+  already found to be effectively dead code, guarded by notify() which is
+  always available - only a smaller subset, mostly required-field
+  validation messages, still needs this treatment).
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
