@@ -4331,7 +4331,7 @@ el('div', { class:'form-row' },
 
       el('div', { class:'supplier-editor-actions' },
         el('button', { class:'btn', onclick:()=>{
-          if (!trimStr(s.company)) return alert('Company name is required');
+          if (!trimStr(s.company)) { notify('warn', 'Company name is required'); return; }
           const i = this.state.suppliers.findIndex(x => x.id === s.id);
           if (i === -1) this.state.suppliers.push(s); else this.state.suppliers[i] = s;
           save(); render();
@@ -5144,7 +5144,7 @@ class MaterialManager {
         style:{ marginLeft:'12px' },
         onclick:()=>{
           const rows = this._lastMaterialRows || [];
-          if (!rows.length) return alert('No material rows to export.');
+          if (!rows.length) { notify('warn', 'No material rows to export.'); return; }
           this._downloadCsv(rows);
         }
       }, 'Export CSV')
@@ -5665,7 +5665,7 @@ el('td', { class:'orders-actions-cell' },
       class:'btn',
       onclick:()=> {
         const k = this._resolveOrderKey(o);
-        if (!k) return alert('Cannot edit: missing identifier on this order.');
+        if (!k) { notify('error', 'Cannot edit: missing identifier on this order.'); return; }
         this.edit(k);
       }
     }, 'Edit'),
@@ -5684,7 +5684,7 @@ el('td', { class:'orders-actions-cell' },
       class:'btn danger',
       onclick:()=> {
         const k = this._resolveOrderKey(o);
-        if (!k) return alert('Cannot delete: missing identifier on this order.');
+        if (!k) { notify('error', 'Cannot delete: missing identifier on this order.'); return; }
         this.delete(k);
       }
     }, 'Delete')
@@ -5759,7 +5759,7 @@ edit(key){
     } else {
       // Otherwise clone the persisted order so Cancel can discard edits.
       const persisted = this._findOrderByAnyKey(key);
-      if (!persisted) { alert('Order not found.'); return; }
+      if (!persisted) { notify('error', 'Order not found.'); return; }
       o = JSON.parse(JSON.stringify(persisted));
     }
   }
@@ -6392,7 +6392,7 @@ const cmp = comparisons[o.id] || null;    if (!cmp) {
 
       const persistDraftForAction = () => {
         // Minimal “auto-save” so actions can safely write metadata to state + disk.
-        if (!trimStr(o.title)) { alert('Title is required'); return false; }
+        if (!trimStr(o.title)) { notify('warn', 'Title is required'); return false; }
 
         const wantsAdhoc = !!(adhocCb && adhocCb.checked);
         if (wantsAdhoc) {
@@ -6495,7 +6495,7 @@ const cmp = comparisons[o.id] || null;    if (!cmp) {
         class:'btn',
         onclick:()=>{
           // Validation
-          if (!trimStr(o.title)) { alert('Title is required'); return; }
+          if (!trimStr(o.title)) { notify('warn', 'Title is required'); return; }
 
           // Decide origin based on Ad-hoc toggle + RFQ content
           const wantsAdhoc = !!(adhocCb && adhocCb.checked);
@@ -6555,7 +6555,7 @@ const cmp = comparisons[o.id] || null;    if (!cmp) {
 OrderManager.prototype.delete = async function(key){
   const K = (key == null ? '' : String(key)).trim();
   if (!K) {
-    alert('Cannot delete: missing identifier on this order.');
+    notify('error', 'Cannot delete: missing identifier on this order.');
     return;
   }
 
@@ -6564,7 +6564,7 @@ OrderManager.prototype.delete = async function(key){
     : null;
 
   if (!order) {
-    alert('Order not found.');
+    notify('error', 'Order not found.');
     return;
   }
 
@@ -6585,7 +6585,7 @@ OrderManager.prototype.delete = async function(key){
   );
 
   if (idx === -1) {
-    alert('Order not found.');
+    notify('error', 'Order not found.');
     return;
   }
 
