@@ -579,6 +579,47 @@ All notable changes to the Procurement Tool will be documented here.
   no control-flow changes beyond restructuring the handful that used the
   `return alert(...)` single-statement idiom into an equivalent
   `notify(...); return;` form.
+- Continued Phase 2 of the alert/confirm dialog styling project: batch 3
+  (11 conversions), all related to order file handling. Before
+  converting, verified two safety preconditions explicitly: (1)
+  OrderManager.prototype.viewFiles genuinely renders through showModal()
+  (it builds its content and ends with `modal = showModal(content)`),
+  and (2) showModal() unconditionally removes every existing .modal
+  overlay before creating a new one. Together these mean alertDialog()
+  (which itself calls showModal() internally) must never be used inside
+  viewFiles's own handlers, since doing so would silently destroy the
+  open Files popup out from under the user - notify() is used there
+  instead throughout. This check also surfaced a correction to the
+  batch's original framing: not all 11 calls actually live inside
+  viewFiles. Five do (the Files modal's own Rename/Move/Delete buttons -
+  "Rename failed", "Unknown kind. Allowed: ...", "Move failed", "File
+  was not found on disk...", "Delete failed"). The other six - the
+  hidden file-picker's onchange and the drag-and-drop zone's ondrop
+  ("Please choose PDF files for this kind.", two separate "Attach
+  failed" messages, "Drag & drop is enabled only for ...", "No files
+  detected.", "Please drop PDF files.") - actually live in the separate
+  OrderManager.prototype.renderFilesSection, which builds an inline Files
+  pane embedded directly in the order editor form and is never shown as
+  a modal at all. Since no modal is open while renderFilesSection's
+  handlers run, its two "Attach failed" catches were deliberately
+  upgraded to alertDialog() instead of notify() - unlike the other
+  messages here, attach failures are substantive, unexpected errors
+  worth a persistent, explicitly-dismissed dialog rather than a fading
+  toast, and doing so carries no modal-stomping risk in this context.
+  Four messages in this batch duplicate text also used by a second,
+  separate file table inside renderFilesSection's own rerenderFilesTable
+  closure - that second table was deliberately left untouched, and each
+  duplicate here was confirmed to match exactly once by its distinct
+  surrounding code (differing error-extraction idioms or variable names)
+  before converting. console.error() logging was added to every
+  genuine-failure catch that lacked it, except the one handled/expected
+  "file already missing" branch, whose real-failure path already logs
+  via its own outer catch. Verified the onchange handler's finally block
+  (which resets the file input for re-selection) now runs only after the
+  alertDialog is dismissed rather than immediately - confirmed this
+  introduces no functional issue, since the dialog's modal overlay
+  already blocks the user from re-interacting with the file picker
+  during that window regardless.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
