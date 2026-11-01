@@ -556,6 +556,29 @@ All notable changes to the Procurement Tool will be documented here.
   audit initially missed, caught and properly disambiguated via distinct
   surrounding context before converting each individually). Verified
   across all 12 conversions.
+- Continued Phase 2 of the alert/confirm dialog styling project: batch 2
+  (10 conversions) - SupplierManager's "Company name is required",
+  MaterialManager's "No material rows to export.", the orders list row
+  actions' "Cannot edit/delete: missing identifier on this order."
+  guards, OrderManager.edit's "Order not found." guard, both "Title is
+  required" validation checks in the order editor (persistDraftForAction
+  and the main Save button - the former's `return false` boolean
+  contract preserved exactly, since other code depends on it), and all
+  three guards inside OrderManager.prototype.delete ("missing identifier"
+  plus its two separate "Order not found." checks). Several of these
+  messages repeat elsewhere in the file ("Order not found." appears four
+  times total, "Cannot delete: missing identifier..." twice, "Title is
+  required" twice) - each was individually disambiguated by its distinct
+  surrounding code (variable casing, return idiom, or enclosing
+  condition) and confirmed to match exactly once before converting,
+  rather than assumed unique from the message text alone. One "Order not
+  found." occurrence, in InvoiceManager.edit, was deliberately left
+  untouched as it falls outside this batch. Every converted guard was
+  already a clean early-exit with nothing executing afterward that
+  depended on alert()'s blocking behavior, so each is a direct swap with
+  no control-flow changes beyond restructuring the handful that used the
+  `return alert(...)` single-statement idiom into an equivalent
+  `notify(...); return;` form.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
