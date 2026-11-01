@@ -620,6 +620,40 @@ All notable changes to the Procurement Tool will be documented here.
   introduces no functional issue, since the dialog's modal overlay
   already blocks the user from re-interacting with the file picker
   during that window regardless.
+- Continued Phase 2 of the alert/confirm dialog styling project: batch 4
+  (9 conversions). Correction to the running total noted in earlier
+  entries: the original unconditional alert() count was 46, not 48 - the
+  two extra were "Nothing to undo" and "Undo failed," both counted in
+  the original audit but then removed outright, never converted, when
+  the whole "Undo last Save" feature was deleted earlier this session.
+  This batch covers: the second file table inside renderFilesSection's
+  own rerenderFilesTable closure ("Invalid filename.", "Unknown kind.
+  Allowed: ..." -> notify(); "Rename failed", "Move failed", "Delete
+  failed" -> alertDialog(), since this table lives in the same inline,
+  never-a-modal pane established in batch 3, so there's no modal to
+  stomp on and these are substantive failures worth a persistent,
+  explicitly-dismissed popup); InvoiceManager.edit's "Order not found."
+  guard (-> notify()); ComparisonManager.applySelectionToOrder's
+  "Applied selection to order items." success message (-> notify(),
+  only shown when not silent); and two further alertDialog() upgrades
+  with real timing implications, checked explicitly before converting.
+  ComparisonManager.importHistoricalQuotes's multi-line completion
+  summary now uses `await alertDialog(...)` where the await is
+  functionally required, not just stylistic: this function can follow
+  the summary with its own _showRelatedHistoricalCandidatesModal() call,
+  which opens a genuine showModal() popup - without awaiting the summary
+  dialog's dismissal first, that second modal could open while the
+  first was still showing, and showModal() always tears down whatever
+  modal is currently open. Native alert()'s blocking behavior happened
+  to guarantee this same ordering for free; await alertDialog() is what
+  preserves it now. The Export Excel button's failure message also now
+  uses alertDialog(); its existing finally block (which re-enables the
+  button and resets its label) will not run until the dialog is
+  dismissed - verified this is not a regression, since native alert()
+  already blocked the entire thread the same way, so the button already
+  stayed disabled/labeled "Exporting" until dismissal under the old
+  behavior too. console.error() added to the three new failure catches
+  that lacked it (Rename, Move, Delete in the second file table).
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
