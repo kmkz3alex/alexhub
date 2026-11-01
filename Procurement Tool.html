@@ -6646,7 +6646,8 @@ const rows = refs.length
 else if (typeof this.edit === 'function') this.edit(order.id);
 else render();
           } catch (e) {
-            alert('Rename failed: ' + (e && e.message ? e.message : e));
+            console.error(e);
+            notify('error', 'Rename failed: ' + (e && e.message ? e.message : e));
           }
         } }, 'Rename'), ' ',
         el('button', { class:'btn secondary', onclick: async ()=>{
@@ -6656,14 +6657,15 @@ else render();
 
           // Normalize user input against allowed kinds (case-insensitive)
           const norm = kinds.find(k => k.toLowerCase() === String(pick).toLowerCase());
-          if (!norm) { alert('Unknown kind. Allowed: ' + kinds.join(', ')); return; }
+          if (!norm) { notify('warn', 'Unknown kind. Allowed: ' + kinds.join(', ')); return; }
 
           try {
             await moveRefTo(order, idx, norm, r.filename);
             save();
             this.viewFiles ? this.viewFiles(order) : this.edit(order.id);
           } catch (e) {
-            alert('Move failed: ' + (e && e.message ? e.message : e));
+            console.error(e);
+            notify('error', 'Move failed: ' + (e && e.message ? e.message : e));
           }
         } }, 'Move'), ' ',
 el('button', { class:'btn danger', onclick: async ()=>{
@@ -6687,7 +6689,7 @@ el('button', { class:'btn danger', onclick: async ()=>{
         throw e;
       }
 
-      alert('File was not found on disk (it may have been deleted/moved). The reference will be removed from this list.');
+      notify('warn', 'File was not found on disk (it may have been deleted/moved). The reference will be removed from this list.');
     }
 
     // Always remove the reference row from the app
@@ -6696,7 +6698,8 @@ el('button', { class:'btn danger', onclick: async ()=>{
     this.viewFiles ? this.viewFiles(order) : this.edit(order.id);
 
   } catch (e) {
-    alert('Delete failed: ' + (e && e.message ? e.message : e));
+    console.error(e);
+    notify('error', 'Delete failed: ' + (e && e.message ? e.message : e));
   }
 } }, 'Delete')
       )
@@ -6838,7 +6841,7 @@ OrderManager.prototype.renderFilesSection = function(order){
 
           // Other kinds: PDFs only, renamed per your rule
           const pdfs = filesAll.filter(f => f && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)));
-          if (!pdfs.length) { alert('Please choose PDF files for this kind.'); return; }
+          if (!pdfs.length) { notify('warn', 'Please choose PDF files for this kind.'); return; }
 
           const renamed = pdfs.map((f,i)=> renameFileForOrder(f, order, currentKind, i));
           if (typeof saveFilesToOrder === 'function') await saveFilesToOrder(order, currentKind, renamed);
@@ -6853,7 +6856,8 @@ OrderManager.prototype.renderFilesSection = function(order){
         if (typeof save === 'function') save();
         rerenderFilesTable();
       } catch(err){
-        alert('Attach failed: ' + (err && err.message ? err.message : err));
+        console.error(err);
+        await alertDialog('Attach failed: ' + (err && err.message ? err.message : err), { danger: true });
       } finally {
         // reset picker so same file can be chosen again
         e.target.value = '';
@@ -6898,12 +6902,12 @@ function recomputeFlagsFromFiles(order){
 
           const currentKind = kindSel.value;
           if (!allowedDropKinds.has(currentKind)) {
-            alert('Drag & drop is enabled only for PO, Proforma, Offer, Invoice, BankTransfer, Comparison.');
+            notify('warn', 'Drag & drop is enabled only for PO, Proforma, Offer, Invoice, BankTransfer, Comparison.');
             return;
           }
 
           const filesAll = Array.from(e.dataTransfer?.files || []);
-          if (!filesAll.length) { alert('No files detected.'); return; }
+          if (!filesAll.length) { notify('warn', 'No files detected.'); return; }
 
           if (currentKind === 'Comparison') {
             // Comparison is PDF-only
@@ -6918,7 +6922,7 @@ function recomputeFlagsFromFiles(order){
 
             // PDFs only
             const pdfs = filesAll.filter(f => f && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)));
-            if (!pdfs.length) { alert('Please drop PDF files.'); return; }
+            if (!pdfs.length) { notify('warn', 'Please drop PDF files.'); return; }
             const renamed = pdfs.map((f,i)=> renameFileForOrder(f, order, currentKind, i));
             if (typeof saveFilesToOrder === 'function') await saveFilesToOrder(order, currentKind, renamed);
           }
@@ -6934,7 +6938,8 @@ function recomputeFlagsFromFiles(order){
         if (typeof save === 'function') save();
         rerenderFilesTable();
       } catch(err){
-        alert('Attach failed: ' + (err?.message || err));
+        console.error(err);
+        await alertDialog('Attach failed: ' + (err?.message || err), { danger: true });
       }
 
       },
