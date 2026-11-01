@@ -654,6 +654,42 @@ All notable changes to the Procurement Tool will be documented here.
   stayed disabled/labeled "Exporting" until dismissal under the old
   behavior too. console.error() added to the three new failure catches
   that lacked it (Rename, Move, Delete in the second file table).
+- Completed Phase 2 of the alert/confirm dialog styling project: batch 5
+  (4 conversions), the final batch. Covers the three offer-file attach
+  paths inside ComparisonManager's supplier-card strip - the hidden file
+  picker's onchange, the drop zone's ondrop, and its onpaste - all three
+  "Offer attach failed" catches now use console.error() + await
+  alertDialog(text, { danger: true }), and the drop zone's "No files
+  detected. Some webmail apps..." instructional message (shown when a
+  drag genuinely carries no real files) now uses await alertDialog()
+  plain, since it's guidance the user needs time to read rather than a
+  quick status update. Before converting, confirmed none of these three
+  handlers' catch blocks read e.clipboardData or e.dataTransfer after
+  the new await point - the specific risk this session already found
+  once with e.currentTarget - because in every case the raw event data
+  is pulled into a plain local variable at the very top of the handler,
+  before any await at all, and the catch blocks themselves never
+  reference e. Also confirmed these handlers live inside
+  ComparisonManager.getView()'s inline supplier-card strip (a plain IIFE,
+  never a modal), so alertDialog() carries no risk of displacing an open
+  popup. Side-finding, left untouched: tracing the call chain to confirm
+  this surfaced that ComparisonManager.buildSupplierCard - a
+  similarly-named, similarly-shaped method - has zero call sites
+  anywhere in the file. It appears to be dead code, superseded at some
+  point by the inline supplier-card-strip logic actually in use; flagged
+  here as a candidate for removal in a future cleanup, not touched as
+  part of this conversion work.
+  This closes out Phase 2 entirely: all 46 originally-unconditional
+  alert() calls identified across this session's audits are now
+  converted (12 + 10 + 11 + 9 + 4, across five batches). Every alert()
+  call still present anywhere in the file is one of three deliberately
+  untouched categories: 14 are guarded by an existing
+  notify()-available-else-alert() fallback that rarely fires in
+  practice, 2 are notify()'s own internal last-resort fallbacks (used
+  only if the toast element is missing or notify() itself throws), and
+  1 is the global error hook's final fallback after notify() and
+  showCopyToast() are both checked. A final full-file re-scan confirmed
+  no other unconditional alert() calls remain.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
