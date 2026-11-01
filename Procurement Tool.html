@@ -7003,13 +7003,13 @@ function recomputeFlagsFromFiles(order){
               let name = prompt('New filename (with extension):', r.filename);
               if (!name) return;
               name = String(name).trim();
-              if (!name || /[\\/:*?"<>|\x00-\x1F]/.test(name)) { alert('Invalid filename.'); return; }
+              if (!name || /[\\/:*?"<>|\x00-\x1F]/.test(name)) { notify('warn', 'Invalid filename.'); return; }
               if (name === r.filename) return;
               try{
                 if (typeof renameRef === 'function') await renameRef(order, idx, name);
                 if (typeof save === 'function') save();
                 rerenderFilesTable();
-              }catch(e){ alert('Rename failed: ' + (e?.message || e)); }
+              }catch(e){ console.error(e); await alertDialog('Rename failed: ' + (e?.message || e), { danger: true }); }
             } }, 'Rename'), ' ',
 
             el('button', { class:'btn secondary', onclick: async ()=>{
@@ -7020,7 +7020,7 @@ function recomputeFlagsFromFiles(order){
 
               // Case-insensitive normalization
               const norm = kinds2.find(k => k.toLowerCase() === String(pick).toLowerCase());
-              if (!norm) { alert('Unknown kind. Allowed: ' + kinds2.join(', ')); return; }
+              if (!norm) { notify('warn', 'Unknown kind. Allowed: ' + kinds2.join(', ')); return; }
 
               try{
                 if (typeof moveRefTo === 'function') await moveRefTo(order, idx, norm, r.filename);
@@ -7030,7 +7030,7 @@ function recomputeFlagsFromFiles(order){
 
                 if (typeof save === 'function') save();
                 rerenderFilesTable();
-              }catch(e){ alert('Move failed: ' + (e?.message || e)); }
+              }catch(e){ console.error(e); await alertDialog('Move failed: ' + (e?.message || e), { danger: true }); }
             } }, 'Move'), ' ',
 
             el('button', { class:'btn danger', onclick: async ()=>{
@@ -7059,7 +7059,8 @@ function recomputeFlagsFromFiles(order){
                   rerenderFilesTable();
                   if (typeof notify === 'function') notify('warn', 'File was already missing on disk. Removed from the order list.');
                 } else {
-                  alert('Delete failed: ' + (e?.message || e));
+                  console.error(e);
+                  await alertDialog('Delete failed: ' + (e?.message || e), { danger: true });
                 }
               }
             } }, 'Delete')
@@ -7412,7 +7413,7 @@ const list = (this.state.orders || []).filter(o=>{
 
   edit(orderId){
     const order = this.state.orders.find(x=>x.id===orderId);
-    if(!order){ alert('Order not found.'); return; }
+    if(!order){ notify('error', 'Order not found.'); return; }
 
     // Create a working copy (simple object)
     const inv = order.invoice
@@ -8914,7 +8915,7 @@ return cmp;
     save();
     render();
 
-    alert(
+    await alertDialog(
       `Historical import completed.\n\n` +
       `Suppliers added: ${suppliersAdded}\n` +
       `Prices filled: ${pricesFilled}\n` +
@@ -9125,7 +9126,7 @@ applySelectionToOrder(order, cmp, silent=false){
     }
 
     save();
-    if (!silent) alert('Applied selection to order items.');
+    if (!silent) notify('success', 'Applied selection to order items.');
   }
 
   buildSupplierCard(order, cmp, supplierId, slotIndex){
@@ -10105,7 +10106,7 @@ const actions = (() => {
           await exportComparisonXLSX_ExcelJS(order, cmp);
         } catch (err) {
           console.error(err);
-          alert('Excel export failed: ' + (err?.message || err));
+          await alertDialog('Excel export failed: ' + (err?.message || err), { danger: true });
         } finally {
           btn.textContent = old; btn.disabled = false;
         }
