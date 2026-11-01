@@ -10254,7 +10254,8 @@ const offerInput = el('input', {
           for (const f of files) { await attachSupplierOffer(order, sid, f); }
           save(); render();
         } catch(err){
-          alert('Offer attach failed: ' + (err && err.message ? err.message : err));
+          console.error(err);
+          await alertDialog('Offer attach failed: ' + (err && err.message ? err.message : err), { danger: true });
         } finally {
           e.target.value = '';
         }
@@ -10282,13 +10283,14 @@ const offerInput = el('input', {
             files = items.map(it => it.getAsFile()).filter(Boolean);
           }
           if (!files.length) {
-            alert("No files detected. Some webmail apps don't provide real files when dragging from the browser. Try saving first, or drag from your desktop/Downloads.");
+            await alertDialog("No files detected. Some webmail apps don't provide real files when dragging from the browser. Try saving first, or drag from your desktop/Downloads.");
             return;
           }
           for (const f of files) { await attachSupplierOffer(order, sid, f); }
           save(); render();
         } catch(err){
-          alert('Offer attach failed: ' + (err && err.message ? err.message : err));
+          console.error(err);
+          await alertDialog('Offer attach failed: ' + (err && err.message ? err.message : err), { danger: true });
         }
       },
 
@@ -10299,7 +10301,8 @@ const offerInput = el('input', {
           for (const f of files) { await attachSupplierOffer(order, sid, f); }
           save(); render();
         } catch(err){
-          alert('Offer attach failed: ' + (err && err.message ? err.message : err));
+          console.error(err);
+          await alertDialog('Offer attach failed: ' + (err && err.message ? err.message : err), { danger: true });
         }
       },
 
