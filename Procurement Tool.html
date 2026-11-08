@@ -9533,6 +9533,16 @@ const supSel = (slotIdx)=>{
   };
 
   const selectSupplier = (sid)=>{
+    // TEMPORARY guard (Stage 0 stop-gap for duplicate suppliers): the data
+    // model keys perSupplier/quotes/winners purely by supplier ID, so two
+    // slots sharing one sid silently share all their data. Remove this
+    // block once per-slot IDs land and slots are no longer sid-keyed.
+    if (sid && cmp.supplierIds.some((existing, i) => existing === sid && i !== slotIdx)) {
+      if (typeof notify === 'function') notify('warn', 'This supplier is already in the comparison.');
+      input.value = nameForId(cmp.supplierIds[slotIdx]);
+      list.style.display = 'none';
+      return;
+    }
     cmp.supplierIds[slotIdx] = sid || '';
     input.value = nameForId(sid);
     list.style.display = 'none';
@@ -9546,6 +9556,9 @@ const supSel = (slotIdx)=>{
   const rebuildList = ()=>{
     const q = String(input.value || '').trim().toLowerCase();
     matches = suppliers.filter(s => {
+      // TEMPORARY guard (Stage 0 stop-gap for duplicate suppliers) - see
+      // selectSupplier() above. Remove once per-slot IDs land.
+      if (cmp.supplierIds.some((existing, i) => existing === s.id && i !== slotIdx)) return false;
       const name = (s.company || '').toLowerCase();
       if (!q) return true;
       return name.includes(q);
