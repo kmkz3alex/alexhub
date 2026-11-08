@@ -2798,8 +2798,17 @@ async function mergeComparisonAndOffers(order, onDone){
       offersThatExist.sort(naturalOfferSort);
     }
 
+    // Request files always go last in the merge, in filename order only -
+    // never price-sorted, since ranking suppliers has no meaning here.
+    const requestRefs = refs.filter(r => r.kind === 'Request' && /\.pdf$/i.test(r.filename));
+    const requestsThatExist = [];
+    for (const r of requestRefs){
+      if (await refExists(r)) requestsThatExist.push(r);
+    }
+    requestsThatExist.sort(naturalOfferSort);
+
     // 4) Read bytes
-    const inputs = [compRef, ...offersThatExist];
+    const inputs = [compRef, ...offersThatExist, ...requestsThatExist];
     const buffers = [];
     for (const r of inputs) buffers.push(await getBytesForRef(r));
 
@@ -3088,6 +3097,7 @@ const KIND_FOLDERS = Object.freeze({
   banktransfer:  'BankTransfers',
   deliverynote:  'DeliveryNotes',
   comparison:    'Comparisons',
+  request:       'Requests',
   mergedfinal:   'MergedFinal'
 });
 
@@ -6373,12 +6383,14 @@ const cmp = comparisons[o.id] || null;    if (!cmp) {
       const refs = Array.isArray(o.files) ? o.files : [];
       const compRef = refs.find(r => r && r.kind === 'Comparison' && /\.pdf$/i.test(r.filename || ''));
       const offerRefs = refs.filter(r => r && r.kind === 'Offer' && /\.pdf$/i.test(r.filename || ''));
+      const requestRef = refs.find(r => r && r.kind === 'Request' && /\.pdf$/i.test(r.filename || ''));
       const mergedRef = refs
         .filter(r => r && r.kind === 'MergedFinal' && /\.pdf$/i.test(r.filename || ''))
         .sort((a,b)=> String(b.date||'').localeCompare(String(a.date||'')))[0];
 
       const compOk = !!compRef;
       const offersCount = offerRefs.length;
+      const requestOk = !!requestRef;
       const mergedOk = !!mergedRef;
 
       const pill = (ok, textOk, textNo) =>
@@ -6387,6 +6399,7 @@ const cmp = comparisons[o.id] || null;    if (!cmp) {
       const infoRow = el('div', { class:'form-row', style:{ gap:'10px', flexWrap:'wrap' } },
         pill(compOk, 'Comparison: OK', 'Comparison: missing'),
         el('span', { class:'pill pill-info' }, `Offers: ${offersCount}`),
+        pill(requestOk, 'Request: attached', 'Request: missing'),
         pill(mergedOk, 'Merged: exists', 'Merged: not generated')
       );
 
@@ -6651,7 +6664,7 @@ else render();
           }
         } }, 'Rename'), ' ',
         el('button', { class:'btn secondary', onclick: async ()=>{
-          const kinds = ['PO','Invoice','Proforma','Offer','BankTransfer','Comparison','MergedFinal'];
+          const kinds = ['PO','Invoice','Proforma','Offer','BankTransfer','Comparison','Request','MergedFinal'];
           const pick = prompt('Move to kind: ' + kinds.join(', '), (r.kind || 'Invoice'));
           if (!pick) return;
 
@@ -6755,8 +6768,8 @@ OrderManager.prototype.renderFilesSection = function(order){
   // - _h(x) for HTML-escaping user-provided strings
   // - displayKind(k) for mapping legacy kind labels
 
-  const kinds = ['PO','Invoice','Proforma','Offer','BankTransfer','Comparison'];
-  const allowedDropKinds = new Set(['PO','Invoice','Proforma','Offer','BankTransfer','Comparison']);
+  const kinds = ['PO','Invoice','Proforma','Offer','BankTransfer','Comparison','Request'];
+  const allowedDropKinds = new Set(['PO','Invoice','Proforma','Offer','BankTransfer','Comparison','Request']);
 
   // Kind selector controls accept rules and DnD behavior
   const kindSel = el('select', {},
@@ -6902,7 +6915,7 @@ function recomputeFlagsFromFiles(order){
 
           const currentKind = kindSel.value;
           if (!allowedDropKinds.has(currentKind)) {
-            notify('warn', 'Drag & drop is enabled only for PO, Proforma, Offer, Invoice, BankTransfer, Comparison.');
+            notify('warn', 'Drag & drop is enabled only for PO, Proforma, Offer, Invoice, BankTransfer, Comparison, Request.');
             return;
           }
 
@@ -7014,7 +7027,7 @@ function recomputeFlagsFromFiles(order){
 
             el('button', { class:'btn secondary', onclick: async ()=>{
               // Include all file kinds you actually use in folders & workflows
-              const kinds2 = ['PO','Invoice','Proforma','Offer','BankTransfer','Comparison','MergedFinal'];
+              const kinds2 = ['PO','Invoice','Proforma','Offer','BankTransfer','Comparison','Request','MergedFinal'];
               const pick = prompt('Move to kind: ' + kinds2.join(', '), (r.kind || 'Invoice'));
               if (!pick) return;
 
