@@ -6841,7 +6841,6 @@ OrderManager.prototype.renderFilesSection = function(order){
         if (typeof saveFilesToOrder === 'function') {
           await saveFilesToOrder(order, 'Comparison', pdfs);
         }
-        if (typeof autoFlagForKind === 'function') autoFlagForKind('Comparison');
       } else {
 
         // Other kinds: PDFs only, renamed per your rule
@@ -6853,7 +6852,6 @@ OrderManager.prototype.renderFilesSection = function(order){
 
         const renamed = pdfs.map((f,i)=> renameFileForOrder(f, order, kind, i));
         if (typeof saveFilesToOrder === 'function') await saveFilesToOrder(order, kind, renamed);
-        if (typeof autoFlagForKind === 'function') autoFlagForKind(kind);
       }
 
       // Keep flags/status in sync with actual refs
@@ -7015,9 +7013,6 @@ function recomputeFlagsFromFiles(order){
 
               try{
                 if (typeof moveRefTo === 'function') await moveRefTo(order, idx, norm, r.filename);
-
-                // (Re)apply flags based on the new kind + full file set
-                if (typeof autoFlagForKind === 'function') autoFlagForKind(norm);
 
                 if (typeof save === 'function') save();
                 rerenderFilesTable();
