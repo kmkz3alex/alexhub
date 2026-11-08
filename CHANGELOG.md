@@ -701,6 +701,30 @@ All notable changes to the Procurement Tool will be documented here.
   from one supplier. The two historical-import paths already had their
   own includes() guard. Existing saved comparisons are not sanitized by
   this guard.
+- Added: a new "Request" file kind, for attaching the original RFQ/request
+  received from the customer to an order. Saved under its own Requests
+  folder (Orders/<year>/<order>/Requests), selectable in the upload
+  dropdown and drag-and-drop zone alongside the existing kinds, and
+  movable to/from Request via the existing "Move to kind" prompts in both
+  the Files modal and the inline Files pane. V1 is PDF-only, matching the
+  existing restriction already applied to every other kind besides
+  Comparison. When "Merge Comparison + Offers (PDF)" runs, any attached
+  Request PDFs are now appended after the Comparison and Offer pages,
+  always last, sorted only by filename (never by price/winner ranking,
+  which has no meaning for a request document) - confirmed with zero
+  Request files attached, the merge output is byte-for-byte unchanged
+  from before this change, and a Request missing on disk is silently
+  skipped exactly like a missing Offer already is. The order editor's
+  "Generate pack" card now also shows a "Request: attached/missing" pill
+  alongside the existing Comparison/Offers/Merged pills, purely
+  informational - it does not affect the merge button's own guardrail
+  checks or recomputeFlagsFromFiles, neither of which were touched.
+  Noted, not guarded against: since the "Move to kind" prompts are a
+  freeform, unvalidated list (already true for every existing kind),
+  moving a generated MergedFinal file into Request kind would cause it
+  to be fed back into a future merge as if it were a request document -
+  a pre-existing class of footgun shared by every kind in these lists,
+  not something newly introduced by adding Request.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
