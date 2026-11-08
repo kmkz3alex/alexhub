@@ -725,6 +725,12 @@ All notable changes to the Procurement Tool will be documented here.
   to be fed back into a future merge as if it were a request document -
   a pre-existing class of footgun shared by every kind in these lists,
   not something newly introduced by adding Request.
+- Refactor, no behavior change: the file-picker onchange and the
+  drop-zone ondrop in renderFilesSection now share one
+  handleAttach(kind, files, source) function (preparation for per-kind
+  drop tiles). Noted: autoFlagForKind() is called in four places but is
+  never defined (always a silent no-op) - candidate to implement or
+  remove.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
