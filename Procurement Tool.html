@@ -3796,55 +3796,6 @@ function inputField(key, label, obj, type='text'){
   return el('label', {}, label+' ', inp);
 }
 
-function inlineField(item, key, label, type='text', idx){
-  const id = uid();
-  const props = { id, type, value: item[key] ?? '', 'data-path': `item:${idx}:${key}` };
-  const inp = el('input', props);
-
-  const apply = () => {
-    if (type === 'number'){
-      const v = clampNonNeg(inp.value);
-      setInvalid(inp, (inp.value !== '' && Number(inp.value) < 0));
-      item[key] = v;
-      // keep caret stable when typing
-      if (inp !== document.activeElement) inp.value = v;
-    } else {
-      item[key] = trimStr(inp.value);
-    }
-  };
-
-  inp.addEventListener('input', apply);
-  inp.addEventListener('blur', apply);
-
-  // Keyboard navigation:
-  // - TAB: keep native behavior (moves to next field to the right)
-  // - ENTER: move to the same column on the next row (for item:* fields)
-  inp.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter') return;
-
-    const path = inp.getAttribute('data-path') || '';
-    const m = /^item:(\d+):(.+)$/.exec(path);
-    if (!m) return; // only handle item rows
-
-    e.preventDefault();   // don't submit / don't move focus elsewhere
-    apply();              // make sure the current value is stored
-
-    const rowIdx  = Number(m[1]);
-    const colKey  = m[2];
-    const nextSel = `input[data-path="item:${rowIdx + 1}:${colKey}"]`;
-    const nextInp = document.querySelector(nextSel);
-
-    if (nextInp && typeof nextInp.focus === 'function') {
-      nextInp.focus();
-      if (typeof nextInp.select === 'function') nextInp.select();
-    }
-  });
-
-  // initial pass
-  apply();
-  return el('label', {}, label+' ', inp);
-}
-
 // ---- Minimal modal helper + quick-add supplier
 function showModal(content, onClose){
   // Ensure only one modal overlay at a time (avoid stacking multiple popups)
