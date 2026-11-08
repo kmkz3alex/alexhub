@@ -731,6 +731,26 @@ All notable changes to the Procurement Tool will be documented here.
   drop tiles). Noted: autoFlagForKind() is called in four places but is
   never defined (always a silent no-op) - candidate to implement or
   remove.
+- Changed (stage 2 of the per-kind drop tiles work): renderFilesSection's
+  single kind dropdown and shared drop zone/"Choose files" button are
+  replaced by one compact drop tile per kind, each calling the
+  handleAttach() extracted in stage 1 with its own fixed kind instead of
+  a shared dropdown value. Every tile shows a live file count ("N
+  files", dimmed when zero), kept in sync from inside
+  rerenderFilesTable() so every existing call site refreshes it
+  automatically, and is correct on first render. Tile order follows the
+  order's own workflow: Request, Comparison, Offer, PO, Proforma,
+  Invoice, BankTransfer. Removed as dead code: allowedDropKinds and its
+  "Drag & drop is enabled only for..." warning (meaningless once each
+  tile is a single fixed kind), kindSel and its change-sync handler,
+  acceptFor() (never varied by kind), the shared hint paragraph (hintFor()
+  is kept and now powers each tile's tooltip instead), and the no-op
+  gridTemplateColumns style on the old form-row. viewFiles, kinds2, the
+  second files table, every autoFlagForKind() call, and saveFilesToOrder
+  are untouched. Not added in this change, left for separate approval:
+  a global window-level dragover/drop guard - confirmed none exists
+  today, so dropping a file outside any tile still falls through to the
+  browser's default navigate-away behavior, same as before this change.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
