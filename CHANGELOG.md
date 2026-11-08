@@ -690,6 +690,17 @@ All notable changes to the Procurement Tool will be documented here.
   1 is the global error hook's final fallback after notify() and
   showCopyToast() are both checked. A final full-file re-scan confirmed
   no other unconditional alert() calls remain.
+- Added (stop-gap): the supplier picker in the Comparison view no longer
+  lists suppliers already used in another slot, and selectSupplier() has
+  a backstop that refuses a duplicate with a warning toast. Reason:
+  cmp.perSupplier, cmp.quotes[idx], cmp.winners and cmp.supplierNotes are
+  all keyed by supplier ID, so two slots holding the same supplier
+  silently shared all their prices, settings and winner state (editing
+  one changed the other). This guard is TEMPORARY and is to be removed
+  when per-slot IDs land, which will allow several independent offers
+  from one supplier. The two historical-import paths already had their
+  own includes() guard. Existing saved comparisons are not sanitized by
+  this guard.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
