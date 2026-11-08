@@ -3845,22 +3845,6 @@ function inlineField(item, key, label, type='text', idx){
   return el('label', {}, label+' ', inp);
 }
 
-function selectSupplierDropdown(item, idx){
-  const sel = el('select', { 'data-path': `item:${idx}:supplierId` },
-    el('option', { value:'' }, '(no supplier)')
-  );
-
-  // Be defensive: if suppliers is missing or not an array, fall back to []
-  const suppliers = Array.isArray(state.suppliers) ? state.suppliers : [];
-  suppliers.forEach(s => sel.appendChild(
-    el('option', { value: s.id }, s.company || '(Unnamed)')
-  ));
-
-  sel.value = item.supplierId || '';
-  sel.addEventListener('change', () => { item.supplierId = sel.value; });
-  return sel;
-}
-
 // ---- Minimal modal helper + quick-add supplier
 function showModal(content, onClose){
   // Ensure only one modal overlay at a time (avoid stacking multiple popups)
