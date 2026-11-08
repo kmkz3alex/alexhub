@@ -12019,6 +12019,28 @@ const materialManager   = new MaterialManager(state);
   });
 })();
 
+// --- Global drop guard: a file dropped outside any drop zone must do
+// nothing, instead of the browser navigating away and replacing the app
+// page. Only intercepts drags carrying files (dataTransfer.types includes
+// 'Files'); text/link drags are left alone. Never calls stopPropagation or
+// reads dataTransfer.files, so it cannot interfere with the Orders editor's
+// per-kind tiles or the Comparison tab's supplier-offer drop zone, both of
+// which already call their own preventDefault() before this would ever run.
+(function installGlobalDropGuard(){
+  if (window.__globalDropGuardInstalled) return;
+  window.__globalDropGuardInstalled = true;
+
+  const hasFiles = (e) => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+
+  // !e.defaultPrevented is mandatory here: the Comparison supplier-offer
+  // zone's own dragover already calls preventDefault() and bubbles to
+  // window, so skipping it there avoids overriding its 'copy' dropEffect
+  // with 'none'. Outside any zone, this shows a "not allowed" cursor
+  // instead of an inviting copy cursor over empty space.
+  window.addEventListener('dragover', e => { if (hasFiles(e) && !e.defaultPrevented) { e.preventDefault(); e.dataTransfer.dropEffect = 'none'; } });
+  window.addEventListener('drop',     e => { if (hasFiles(e)) e.preventDefault(); });
+})();
+
 // Bootstrap (robust: run even if already interactive/complete)
 (function bootstrap(){
   const start = () => {
