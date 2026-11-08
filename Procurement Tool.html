@@ -6823,6 +6823,57 @@ OrderManager.prototype.renderFilesSection = function(order){
     return new File([file], finalName, { type });
   };
 
+  // Shared by the file-picker's onchange and the drop-zone's ondrop (Stage 1
+  // refactor - behavior unchanged, just de-duplicated). `source` is 'pick'
+  // or 'drop', used only to pick the right wording for two messages.
+  const handleAttach = async (kind, filesAll, source) => {
+    if (!filesAll.length) {
+      if (source === 'drop') notify('warn', 'No files detected.');
+      return;
+    }
+
+    try{
+      if (kind === 'Comparison') {
+        // Comparison is PDF-only
+        const pdfs = filesAll.filter(f =>
+          f && (
+            f.type === 'application/pdf' ||
+            /\.pdf$/i.test(f.name)
+          )
+        );
+        if (!pdfs.length) { notify('warn', 'Comparison accepts PDF files only.'); return; }
+
+        if (typeof saveFilesToOrder === 'function') {
+          await saveFilesToOrder(order, 'Comparison', pdfs);
+        }
+        if (typeof autoFlagForKind === 'function') autoFlagForKind('Comparison');
+      } else {
+
+        // Other kinds: PDFs only, renamed per your rule
+        const pdfs = filesAll.filter(f => f && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)));
+        if (!pdfs.length) {
+          notify('warn', source === 'drop' ? 'Please drop PDF files.' : 'Please choose PDF files for this kind.');
+          return;
+        }
+
+        const renamed = pdfs.map((f,i)=> renameFileForOrder(f, order, kind, i));
+        if (typeof saveFilesToOrder === 'function') await saveFilesToOrder(order, kind, renamed);
+        if (typeof autoFlagForKind === 'function') autoFlagForKind(kind);
+      }
+
+      // Keep flags/status in sync with actual refs
+      if (typeof recomputeFlagsFromFiles === 'function') recomputeFlagsFromFiles(order);
+      if (typeof recomputeStatus === 'function') recomputeStatus(order);
+      if (typeof syncStatusUIFromFlags === 'function') syncStatusUIFromFlags(order);
+
+      if (typeof save === 'function') save();
+      rerenderFilesTable();
+    } catch(err){
+      console.error(err);
+      await alertDialog('Attach failed: ' + (err && err.message ? err.message : err), { danger: true });
+    }
+  };
+
   // Hidden input (proxy for click)
   const fileInput = el('input', {
     type:'file',
@@ -6830,47 +6881,9 @@ OrderManager.prototype.renderFilesSection = function(order){
     multiple:true,
     accept: acceptFor(kindSel.value),
     onchange: async (e)=>{
+      const filesAll = Array.from(e.target.files || []);
       try{
-        const filesAll = Array.from(e.target.files || []);
-        if (!filesAll.length) return;
-
-        const currentKind = kindSel.value;
-
-        if (currentKind === 'Comparison') {
-          // Comparison is PDF-only
-          const pdfs = filesAll.filter(f =>
-            f && (
-              f.type === 'application/pdf' ||
-              /\.pdf$/i.test(f.name)
-            )
-          );
-          if (!pdfs.length) { notify('warn', 'Comparison accepts PDF files only.'); return; }
-
-          if (typeof saveFilesToOrder === 'function') {
-            await saveFilesToOrder(order, 'Comparison', pdfs);
-          }
-          if (typeof autoFlagForKind === 'function') autoFlagForKind('Comparison');
-        } else {
-
-          // Other kinds: PDFs only, renamed per your rule
-          const pdfs = filesAll.filter(f => f && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)));
-          if (!pdfs.length) { notify('warn', 'Please choose PDF files for this kind.'); return; }
-
-          const renamed = pdfs.map((f,i)=> renameFileForOrder(f, order, currentKind, i));
-          if (typeof saveFilesToOrder === 'function') await saveFilesToOrder(order, currentKind, renamed);
-          if (typeof autoFlagForKind === 'function') autoFlagForKind(currentKind);
-        }
-
-        // Keep flags/status in sync with actual refs
-        if (typeof recomputeFlagsFromFiles === 'function') recomputeFlagsFromFiles(order);
-        if (typeof recomputeStatus === 'function') recomputeStatus(order);
-        if (typeof syncStatusUIFromFlags === 'function') syncStatusUIFromFlags(order);
-
-        if (typeof save === 'function') save();
-        rerenderFilesTable();
-      } catch(err){
-        console.error(err);
-        await alertDialog('Attach failed: ' + (err && err.message ? err.message : err), { danger: true });
+        await handleAttach(kindSel.value, filesAll, 'pick');
       } finally {
         // reset picker so same file can be chosen again
         e.target.value = '';
@@ -6909,52 +6922,17 @@ function recomputeFlagsFromFiles(order){
       ondragover:  (e)=>{ e.preventDefault(); dz.classList.add('drag'); },
       ondragleave: ()=>{ dz.classList.remove('drag'); },
       ondrop: async (e)=>{
-        try {
-          e.preventDefault(); e.stopPropagation();
-          dz.classList.remove('drag');
+        e.preventDefault(); e.stopPropagation();
+        dz.classList.remove('drag');
 
-          const currentKind = kindSel.value;
-          if (!allowedDropKinds.has(currentKind)) {
-            notify('warn', 'Drag & drop is enabled only for PO, Proforma, Offer, Invoice, BankTransfer, Comparison, Request.');
-            return;
-          }
+        const currentKind = kindSel.value;
+        if (!allowedDropKinds.has(currentKind)) {
+          notify('warn', 'Drag & drop is enabled only for PO, Proforma, Offer, Invoice, BankTransfer, Comparison, Request.');
+          return;
+        }
 
-          const filesAll = Array.from(e.dataTransfer?.files || []);
-          if (!filesAll.length) { notify('warn', 'No files detected.'); return; }
-
-          if (currentKind === 'Comparison') {
-            // Comparison is PDF-only
-            const pdfs = filesAll.filter(f =>
-              f && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name))
-            );
-            if (!pdfs.length) { notify('warn', 'Comparison accepts PDF files only.'); return; }
-            if (typeof saveFilesToOrder === 'function') {
-              await saveFilesToOrder(order, 'Comparison', pdfs);
-            }
-          } else {
-
-            // PDFs only
-            const pdfs = filesAll.filter(f => f && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)));
-            if (!pdfs.length) { notify('warn', 'Please drop PDF files.'); return; }
-            const renamed = pdfs.map((f,i)=> renameFileForOrder(f, order, currentKind, i));
-            if (typeof saveFilesToOrder === 'function') await saveFilesToOrder(order, currentKind, renamed);
-          }
-
-        if (typeof autoFlagForKind === 'function') autoFlagForKind(currentKind);
-
-        // Keep flags and computed status in sync with actual file refs
-        if (typeof recomputeFlagsFromFiles === 'function')
-          recomputeFlagsFromFiles(order);
-        if (typeof recomputeStatus === 'function') recomputeStatus(order);
-        if (typeof syncStatusUIFromFlags === 'function') syncStatusUIFromFlags(order);
-
-        if (typeof save === 'function') save();
-        rerenderFilesTable();
-      } catch(err){
-        console.error(err);
-        await alertDialog('Attach failed: ' + (err?.message || err), { danger: true });
-      }
-
+        const filesAll = Array.from(e.dataTransfer?.files || []);
+        await handleAttach(currentKind, filesAll, 'drop');
       },
       style:{
         cursor:'pointer', userSelect:'none',
