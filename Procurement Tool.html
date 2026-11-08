@@ -7724,16 +7724,6 @@ function renderOrderNoCell(o){
 class TrackingManager {
   constructor(state){ this.state = state; }
 
-  getStatusColor(status){
-const map = {
-  'Draft':'Draft',
-  'Ordered':'Ordered',
-  'Partially Delivered':'Partially Delivered',
-  'Delivered':'Delivered'
-};
-return map[status] || 'Unknown';
-  }
-
   getMainSupplier(order){
     const item = order.items?.find(it => it.supplierId);
     const s = item && this.state.suppliers.find(x => x.id === item.supplierId);
