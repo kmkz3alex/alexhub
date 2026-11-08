@@ -751,6 +751,26 @@ All notable changes to the Procurement Tool will be documented here.
   a global window-level dragover/drop guard - confirmed none exists
   today, so dropping a file outside any tile still falls through to the
   browser's default navigate-away behavior, same as before this change.
+- Added: a permanent, window-level drag/drop guard, installed once at
+  app startup (installGlobalDropGuard, right next to the existing
+  installGlobalErrorHooks, same idempotent self-invoking-IIFE pattern).
+  A file dropped outside any drop zone now does nothing, instead of the
+  browser navigating away from the app and replacing the page entirely -
+  the gap flagged but deliberately not acted on when the per-kind drop
+  tiles were added. Only intercepts drags that actually carry files
+  (dataTransfer.types includes 'Files'); text/link drags are left
+  completely alone. The drop listener only ever calls preventDefault()
+  and never reads dataTransfer.files or calls stopPropagation(), so it
+  cannot interfere with the Orders editor's per-kind tiles or the
+  Comparison tab's supplier-offer drop zone - confirmed by reading both
+  of the app's only two existing drop handlers, both of which already
+  call their own preventDefault() before this guard would ever run. The
+  dragover listener also sets dropEffect to 'none' over empty space, so
+  the cursor correctly shows "not allowed" instead of an inviting copy
+  icon - gated on !e.defaultPrevented so it never overrides the
+  Comparison zone's own dragover, which already calls preventDefault()
+  and bubbles to window with its own 'copy' dropEffect intact. Confirmed
+  no text input or textarea anywhere in the app accepts a dropped file.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
