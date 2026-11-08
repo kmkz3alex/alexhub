@@ -771,6 +771,44 @@ All notable changes to the Procurement Tool will be documented here.
   Comparison zone's own dragover, which already calls preventDefault()
   and bubbles to window with its own 'copy' dropEffect intact. Confirmed
   no text input or textarea anywhere in the app accepts a dropped file.
+- Removed dead code: a systematic audit of every top-level function,
+  prototype method, and the alert/drop-tile cleanup's own loose ends
+  turned up five genuinely unreferenced pieces, each confirmed
+  individually (not just by a single grep) before deletion and removed
+  as five separate commits so any one is independently revertable:
+  the three autoFlagForKind() typeof-guarded calls (the function was
+  never defined anywhere, so every call was a permanent no-op, and
+  recomputeFlagsFromFiles() - already called right after each one -
+  independently re-derives the same status flags from order.files
+  anyway); TrackingManager.getStatusColor(); selectSupplierDropdown()
+  (a native <select> builder superseded by the live autocomplete-based
+  supplier picker); inlineField() (a legacy per-item inline-edit input
+  with Enter-to-next-row navigation, superseded by the live item-row
+  editing UI); and ComparisonManager.buildSupplierCard(), a 252-line
+  unused near-duplicate of the live supplierCardsStrip IIFE in getView()
+  - same price/currency/delivery/winner inputs, same per-supplier
+  totals and "Best total" badge logic, built from the same shared
+  helpers, all of which already have live callers elsewhere, so this
+  removal has zero cascade effect. Verified per batch: re-located each
+  block by content (not just original line numbers) immediately before
+  removing it, confirmed the removed line count matched what was
+  expected, and confirmed zero remaining references to each removed
+  name afterward. Node.js was not available in this environment for a
+  real `node --check` syntax validation (nor were deno, bun, or an
+  actual Python install), so syntax correctness was instead verified
+  via a bracket-balance heuristic - extracting the main inline <script>
+  block and confirming every brace/paren/square-bracket type's open
+  count dropped by exactly the same amount as its close count across
+  the full five-batch operation (symmetric to the character, matching
+  the sum of all five commits' reported deletions exactly), re-run from
+  a precisely re-located script boundary after an earlier arithmetic
+  slip was caught and corrected mid-way through. A real browser load
+  test has not been performed as part of this change and is recommended
+  before relying on this further. CSS cleanup
+  (the dead position:absolute on .item-name-ac-list, and merging the
+  duplicate .offer-drop rule) was identified in the same audit but
+  deliberately deferred, since it's a visual-risk change rather than a
+  pure dead-code removal and deserves its own before/after check.
 
 ## [v1.2.2.39] - Baseline
 - First version tracked in git.
