@@ -702,6 +702,12 @@ thead.sticky th {
   background: rgba(58, 134, 255, 0.12);
   animation: pulse-border 1s ease-in-out infinite;
 }
+.offer-drop.tile {
+  min-width: 150px;
+  padding: 6px 10px;
+  cursor: pointer;
+  user-select: none;
+}
 
 /* Pulse animation */
 @keyframes pulse-border {
@@ -6768,20 +6774,9 @@ OrderManager.prototype.renderFilesSection = function(order){
   // - _h(x) for HTML-escaping user-provided strings
   // - displayKind(k) for mapping legacy kind labels
 
-  const kinds = ['PO','Invoice','Proforma','Offer','BankTransfer','Comparison','Request'];
-  const allowedDropKinds = new Set(['PO','Invoice','Proforma','Offer','BankTransfer','Comparison','Request']);
+  const kinds = ['Request','Comparison','Offer','PO','Proforma','Invoice','BankTransfer'];
 
-  // Kind selector controls accept rules and DnD behavior
-  const kindSel = el('select', {},
-
-    ...kinds.map(k => el('option', { value:k }, k))
-  );
-  kindSel.value = 'Invoice';
-
-  // Accept rules + hint text
-  const acceptFor = (kind)=>{
-    return '.pdf,application/pdf';
-  };
+  // Hint text, used as each tile's tooltip
   const hintFor = (kind)=>{
     return (kind === 'Comparison')
       ? 'Drop PDF. The file will be saved under Comparison.'
@@ -6874,22 +6869,58 @@ OrderManager.prototype.renderFilesSection = function(order){
     }
   };
 
-  // Hidden input (proxy for click)
-  const fileInput = el('input', {
-    type:'file',
-    style:{ position:'absolute', left:'-9999px' },
-    multiple:true,
-    accept: acceptFor(kindSel.value),
-    onchange: async (e)=>{
-      const filesAll = Array.from(e.target.files || []);
-      try{
-        await handleAttach(kindSel.value, filesAll, 'pick');
-      } finally {
-        // reset picker so same file can be chosen again
-        e.target.value = '';
+  // One file count element per kind, kept live by rerenderFilesTable().
+  const tileCounts = new Map();
+
+  // Stage 2: one compact drop tile per kind, replacing the single kind
+  // dropdown + shared drop zone. Each tile calls the same handleAttach()
+  // extracted in stage 1, just with its own fixed `kind` instead of
+  // reading a shared dropdown value.
+  const makeKindTile = (kind) => {
+    const tileInput = el('input', {
+      type:'file',
+      style:{ position:'absolute', left:'-9999px' },
+      multiple:true,
+      accept:'.pdf,application/pdf',
+      // Prevent the programmatic .click() below from bubbling back up
+      // and re-triggering the tile's own onclick.
+      onclick: (e)=> e.stopPropagation(),
+      onchange: async (e)=>{
+        const filesAll = Array.from(e.target.files || []);
+        try{
+          await handleAttach(kind, filesAll, 'pick');
+        } finally {
+          e.target.value = '';
+        }
       }
-    }
-  });
+    });
+
+    const countEl = el('span', { class:'muted' }, '0 files');
+    tileCounts.set(kind, countEl);
+
+    const tile = el('div', {
+      class: 'offer-drop tile',
+      title: hintFor(kind),
+      onclick: ()=> tileInput.click(),
+      ondragenter: (e)=>{ e.preventDefault(); tile.classList.add('drag'); },
+      ondragover:  (e)=>{ e.preventDefault(); tile.classList.add('drag'); },
+      ondragleave: ()=>{ tile.classList.remove('drag'); },
+      ondrop: async (e)=>{
+        e.preventDefault(); e.stopPropagation();
+        tile.classList.remove('drag');
+        const filesAll = Array.from(e.dataTransfer?.files || []);
+        await handleAttach(kind, filesAll, 'drop');
+      }
+    },
+      el('div', {}, displayKind(kind) || kind),
+      countEl,
+      tileInput
+    );
+
+    return tile;
+  };
+
+  const tilesRow = el('div', { class:'form-row' }, ...kinds.map(makeKindTile));
 
 // === Derive status flags from file refs (PO/Invoice/BankTransfer) ===
 function recomputeFlagsFromFiles(order){
@@ -6911,50 +6942,6 @@ function recomputeFlagsFromFiles(order){
   if (typeof recomputeStatus === 'function') recomputeStatus(order);
 }
 
-  // Drag & Drop zone
-  let hint;
-  const dropZone = (()=> {
-    const dz = el('div', {
-      class: 'offer-drop',
-      title: 'Drop files here or click to browse',
-      onclick: ()=> fileInput.click(),
-      ondragenter: (e)=>{ e.preventDefault(); dz.classList.add('drag'); },
-      ondragover:  (e)=>{ e.preventDefault(); dz.classList.add('drag'); },
-      ondragleave: ()=>{ dz.classList.remove('drag'); },
-      ondrop: async (e)=>{
-        e.preventDefault(); e.stopPropagation();
-        dz.classList.remove('drag');
-
-        const currentKind = kindSel.value;
-        if (!allowedDropKinds.has(currentKind)) {
-          notify('warn', 'Drag & drop is enabled only for PO, Proforma, Offer, Invoice, BankTransfer, Comparison, Request.');
-          return;
-        }
-
-        const filesAll = Array.from(e.dataTransfer?.files || []);
-        await handleAttach(currentKind, filesAll, 'drop');
-      },
-      style:{
-        cursor:'pointer', userSelect:'none',
-        display:'flex', alignItems:'center', gap:'8px',
-        border:'1px dashed var(--border)', borderRadius:'8px',
-        padding:'10px', minHeight:'40px'
-      }
-    },
-      el('span', { class:'pill pill-info' }, 'Files'),
-      el('span', {}, 'Drop files here or click to upload')
-    );
-
-    hint = el('div', { class:'muted', style:{ marginTop:'6px' } }, hintFor(kindSel.value));
-    return el('div', {}, dz, hint);
-  })();
-
-  // Keep picker + hint in sync with Kind
-  kindSel.onchange = ()=>{
-    fileInput.accept = acceptFor(kindSel.value);
-    if (hint) hint.textContent = hintFor(kindSel.value);
-  };
-
   // Existing files table
   const tableHead = el('thead', {}, el('tr', {},
     el('th', {}, 'Kind'),
@@ -6968,6 +6955,19 @@ function recomputeFlagsFromFiles(order){
 
   function rerenderFilesTable(){
     const refs = Array.isArray(order.files) ? order.files : [];
+
+    // Keep every tile's count in sync. Placed before the early return below
+    // so a zero-file order still clears all tile counts correctly, and
+    // runs from every existing call site of rerenderFilesTable() with no
+    // changes needed at any of those call sites.
+    const countsByKind = {};
+    refs.forEach(r => { if (r && r.kind) countsByKind[r.kind] = (countsByKind[r.kind] || 0) + 1; });
+    tileCounts.forEach((countEl, kind) => {
+      const n = countsByKind[kind] || 0;
+      countEl.textContent = `${n} file${n === 1 ? '' : 's'}`;
+      countEl.classList.toggle('muted', n === 0);
+    });
+
     tableBody.innerHTML = '';
     if (!refs.length){
       tableBody.appendChild(el('tr', {}, el('td', { colSpan:5, class:'muted' }, 'No files attached to this order.')));
@@ -7066,14 +7066,8 @@ function recomputeFlagsFromFiles(order){
 
   // Wrapper returned to the editor (NO Save/Cancel here)
   return el('div', { class:'pane' },
-    // keep hidden input in DOM for .click()
-    el('div', { style:{ position:'absolute', left:'-10000px', top:'-10000px', width:'1px', height:'1px', overflow:'hidden' } }, fileInput),
-
     el('h3', {}, 'Files'),
-    el('div', { class:'form-row', style:{ gridTemplateColumns:'1fr 2fr' } },
-      el('label', {}, 'Kind ', kindSel),
-      dropZone
-    ),
+    tilesRow,
     table
   );
 };
